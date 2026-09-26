@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.env.*
+
+# Spark / Databricks
+.metastore_db/
+derby.log
+spark-warehouse/
+*.crc
+.databricks/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large local extracts (Gold exports stay small in dashboard/export/)
+*.parquet
+!dashboard/export/.gitkeep
+
+# Power BI lock files
+*.pbix.lock
+
+# Notebook checkpoints
+.ipynb_checkpoints/
