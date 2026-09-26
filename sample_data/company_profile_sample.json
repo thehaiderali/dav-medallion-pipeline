@@ -1,0 +1,102 @@
+[
+  {
+    "ticker": "AAPL",
+    "company_name": "Apple Inc.",
+    "sector": "Information Technology",
+    "industry": "Consumer Electronics",
+    "country": "United States",
+    "website": "https://www.apple.com",
+    "employees": 161000,
+    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
+  },
+  {
+    "ticker": "MSFT",
+    "company_name": "Microsoft Corporation",
+    "sector": "Information Technology",
+    "industry": "Software\u2014Infrastructure",
+    "country": "United States",
+    "website": "https://www.microsoft.com",
+    "employees": 228000,
+    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
+  },
+  {
+    "ticker": "GOOGL",
+    "company_name": "Alphabet Inc.",
+    "sector": "Communication Services",
+    "industry": "Internet Content & Information",
+    "country": "United States",
+    "website": "https://abc.xyz",
+    "employees": 182000,
+    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
+  },
+  {
+    "ticker": "AMZN",
+    "company_name": "Amazon.com, Inc.",
+    "sector": "Consumer Discretionary",
+    "industry": "Internet Retail",
+    "country": "United States",
+    "website": "https://www.amazon.com",
+    "employees": 1525000,
+    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
+  },
+  {
+    "ticker": "TSLA",
+    "company_name": "Tesla, Inc.",
+    "sector": "Consumer Discretionary",
+    "industry": "Auto Manufacturers",
+    "country": "United States",
+    "website": "https://www.tesla.com",
+    "employees": 125665,
+    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
+  },
+  {
+    "ticker": "NVDA",
+    "company_name": "NVIDIA Corporation",
+    "sector": "Information Technology",
+    "industry": "Semiconductors",
+    "country": "United States",
+    "website": "https://www.nvidia.com",
+    "employees": 36000,
+    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
+  },
+  {
+    "ticker": "JPM",
+    "company_name": "JPMorgan Chase & Co.",
+    "sector": "Financials",
+    "industry": "Banks\u2014Diversified",
+    "country": "United States",
+    "website": "https://www.jpmorganchase.com",
+    "employees": 317233,
+    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
+  },
+  {
+    "ticker": "XOM",
+    "company_name": "Exxon Mobil Corporation",
+    "sector": "Energy",
+    "industry": "Oil & Gas Integrated",
+    "country": "United States",
+    "website": "https://corporate.exxonmobil.com",
+    "employees": 62000,
+    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
+  },
+  {
+    "ticker": "PG",
+    "company_name": "The Procter & Gamble Company",
+    "sector": "Consumer Staples",
+    "industry": "Household & Personal Products",
+    "country": "United States",
+    "website": "https://www.pg.com",
+    "employees": 107000,
+    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
+  },
+  {
+    "ticker": "DIS",
+    "company_name": "The Walt Disney Company",
+    "sector": "Communication Services",
+    "industry": "Entertainment",
+    "country": "United States",
+    "website": "https://www.thewaltdisneycompany.com",
+    "employees": 225000,
+    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
+  }
+]
