@@ -1,0 +1,10 @@
+{
+  "full_load_cutoff_date": "2026-09-28",
+  "full_load_row_count": 641325,
+  "full_load_trade_date_max": "2026-09-28",
+  "symbols_downloaded": 503,
+  "incremental_start_date": "2026-09-29",
+  "incremental_row_count": 1006,
+  "incremental_trade_date_min": "2026-09-29",
+  "incremental_trade_date_max": "2026-09-30"
+}

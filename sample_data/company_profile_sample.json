@@ -1,102 +1,122 @@
 [
   {
-    "ticker": "AAPL",
-    "company_name": "Apple Inc.",
-    "sector": "Information Technology",
-    "industry": "Consumer Electronics",
-    "country": "United States",
-    "website": "https://www.apple.com",
-    "employees": 161000,
-    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
+    "ticker": "MMM",
+    "company_name": "3M",
+    "sector": "Industrials",
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
   },
   {
-    "ticker": "MSFT",
-    "company_name": "Microsoft Corporation",
+    "ticker": "AOS",
+    "company_name": "A. O. Smith",
+    "sector": "Industrials",
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
+  },
+  {
+    "ticker": "ABT",
+    "company_name": "Abbott Laboratories",
+    "sector": "Health Care",
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
+  },
+  {
+    "ticker": "ABBV",
+    "company_name": "AbbVie",
+    "sector": "Health Care",
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
+  },
+  {
+    "ticker": "ACN",
+    "company_name": "Accenture",
     "sector": "Information Technology",
-    "industry": "Software\u2014Infrastructure",
-    "country": "United States",
-    "website": "https://www.microsoft.com",
-    "employees": 228000,
-    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
+  },
+  {
+    "ticker": "ADBE",
+    "company_name": "Adobe Inc.",
+    "sector": "Information Technology",
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
+  },
+  {
+    "ticker": "AMD",
+    "company_name": "Advanced Micro Devices",
+    "sector": "Information Technology",
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
+  },
+  {
+    "ticker": "AES",
+    "company_name": "AES Corporation",
+    "sector": "Utilities",
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
+  },
+  {
+    "ticker": "AFL",
+    "company_name": "Aflac",
+    "sector": "Financials",
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
+  },
+  {
+    "ticker": "A",
+    "company_name": "Agilent Technologies",
+    "sector": "Health Care",
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
+  },
+  {
+    "ticker": "APD",
+    "company_name": "Air Products",
+    "sector": "Materials",
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
+  },
+  {
+    "ticker": "ABNB",
+    "company_name": "Airbnb",
+    "sector": "Consumer Discretionary",
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
+  },
+  {
+    "ticker": "AKAM",
+    "company_name": "Akamai Technologies",
+    "sector": "Information Technology",
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
+  },
+  {
+    "ticker": "ALB",
+    "company_name": "Albemarle Corporation",
+    "sector": "Materials",
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
+  },
+  {
+    "ticker": "ARE",
+    "company_name": "Alexandria Real Estate Equities",
+    "sector": "Real Estate",
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
+  },
+  {
+    "ticker": "ALGN",
+    "company_name": "Align Technology",
+    "sector": "Health Care",
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
+  },
+  {
+    "ticker": "ALLE",
+    "company_name": "Allegion",
+    "sector": "Industrials",
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
+  },
+  {
+    "ticker": "LNT",
+    "company_name": "Alliant Energy",
+    "sector": "Utilities",
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
+  },
+  {
+    "ticker": "ALL",
+    "company_name": "Allstate",
+    "sector": "Financials",
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
   },
   {
     "ticker": "GOOGL",
-    "company_name": "Alphabet Inc.",
+    "company_name": "Alphabet Inc. (Class A)",
     "sector": "Communication Services",
-    "industry": "Internet Content & Information",
-    "country": "United States",
-    "website": "https://abc.xyz",
-    "employees": 182000,
-    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
-  },
-  {
-    "ticker": "AMZN",
-    "company_name": "Amazon.com, Inc.",
-    "sector": "Consumer Discretionary",
-    "industry": "Internet Retail",
-    "country": "United States",
-    "website": "https://www.amazon.com",
-    "employees": 1525000,
-    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
-  },
-  {
-    "ticker": "TSLA",
-    "company_name": "Tesla, Inc.",
-    "sector": "Consumer Discretionary",
-    "industry": "Auto Manufacturers",
-    "country": "United States",
-    "website": "https://www.tesla.com",
-    "employees": 125665,
-    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
-  },
-  {
-    "ticker": "NVDA",
-    "company_name": "NVIDIA Corporation",
-    "sector": "Information Technology",
-    "industry": "Semiconductors",
-    "country": "United States",
-    "website": "https://www.nvidia.com",
-    "employees": 36000,
-    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
-  },
-  {
-    "ticker": "JPM",
-    "company_name": "JPMorgan Chase & Co.",
-    "sector": "Financials",
-    "industry": "Banks\u2014Diversified",
-    "country": "United States",
-    "website": "https://www.jpmorganchase.com",
-    "employees": 317233,
-    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
-  },
-  {
-    "ticker": "XOM",
-    "company_name": "Exxon Mobil Corporation",
-    "sector": "Energy",
-    "industry": "Oil & Gas Integrated",
-    "country": "United States",
-    "website": "https://corporate.exxonmobil.com",
-    "employees": 62000,
-    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
-  },
-  {
-    "ticker": "PG",
-    "company_name": "The Procter & Gamble Company",
-    "sector": "Consumer Staples",
-    "industry": "Household & Personal Products",
-    "country": "United States",
-    "website": "https://www.pg.com",
-    "employees": 107000,
-    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
-  },
-  {
-    "ticker": "DIS",
-    "company_name": "The Walt Disney Company",
-    "sector": "Communication Services",
-    "industry": "Entertainment",
-    "country": "United States",
-    "website": "https://www.thewaltdisneycompany.com",
-    "employees": 225000,
-    "ingested_at": "2026-09-26T13:28:20.817675+00:00"
+    "ingested_at": "2026-09-30T19:06:16.167699+00:00"
   }
 ]

@@ -1,7 +1,7 @@
 # Stock Market Medallion Pipeline
 
 An end-to-end **Lakehouse** data engineering project that ingests five years of daily stock price
-data for ten large-capitalization U.S. companies, then progressively refines that data through a
+data for **~503 S&P 500** constituents (see `data/sp500_tickers.csv`), then progressively refines that data through a
 **Medallion Architecture** (Bronze → Silver → Gold) implemented with **Apache Spark on Databricks
 Community Edition**. The curated Gold layer feeds a Power BI dashboard for price-trend analysis,
 sector performance comparison, and top gainers/losers reporting.
@@ -126,31 +126,16 @@ rows. This is what makes the incremental job safe to retry.
 
 ## Dataset Scope
 
-### Tracked tickers and sectors
+### Universe
 
-Ten companies chosen to span six GICS-style sectors, so the sector comparison in the Gold layer
-is meaningful rather than single-sector.
-
-| Ticker | Company | Sector |
-| --- | --- | --- |
-| AAPL | Apple Inc. | Information Technology |
-| MSFT | Microsoft Corporation | Information Technology |
-| NVDA | NVIDIA Corporation | Information Technology |
-| GOOGL | Alphabet Inc. (Class A) | Communication Services |
-| DIS | The Walt Disney Company | Communication Services |
-| AMZN | Amazon.com, Inc. | Consumer Discretionary |
-| TSLA | Tesla, Inc. | Consumer Discretionary |
-| JPM | JPMorgan Chase & Co. | Financials |
-| PG | The Procter & Gamble Company | Consumer Staples |
-| XOM | Exxon Mobil Corporation | Energy |
+**S&P 500** daily OHLCV (~503 tickers). List: [`data/sp500_tickers.csv`](data/sp500_tickers.csv) (refresh: `python scripts/fetch_sp500_tickers.py`).
 
 ### Full-load volume
 
-- **Frequency:** daily OHLCV bars
-- **History:** 5 years (~1,250 trading days per ticker)
-- **Expected Bronze volume:** ~12,500 price rows per full load
-- **Incremental volume:** 1 new row per ticker per trading day (~10 rows/day)
-- **Expected Gold `fact_daily_returns` size:** ~12,500 rows
+- **History:** 5 years through sample cutoff **2026-09-28**
+- **Expected Bronze rows:** **~500k–650k** (`sample_data/full_load_sample.csv`)
+- **Incremental:** separate file from **2026-09-29** (`incremental_load_sample.csv`)
+- **Generate samples:** [`sample_data/README.md`](sample_data/README.md)
 
 ### Privacy and compliance
 
@@ -223,9 +208,16 @@ dav-medallion-pipeline/
 │   └── export/                     # CSV / Parquet extracts consumed by Power BI
 │       └── .gitkeep
 │
-└── sample_data/                    # Phase 1 committed raw payloads
-    ├── full_load_sample.csv        # Full-load payload (5y × 10 tickers)
-    ├── incremental_load_sample.csv # Incremental payload (recent days)
+├── data/
+│   └── sp500_tickers.csv           # S&P 500 symbols (Wikipedia)
+├── scripts/
+│   ├── fetch_sp500_tickers.py
+│   └── generate_sample_data.py     # CSV full + incremental samples
+│
+└── sample_data/
+    ├── full_load_sample.csv        # Full load (5y × S&P 500)
+    ├── incremental_load_sample.csv # Second download only
+    ├── MANIFEST.json
     ├── company_profile_sample.json
     ├── bronze_sample.csv
     ├── silver_sample.csv

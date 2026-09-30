@@ -1,303 +1,231 @@
 """
-Download Yahoo Finance samples for Phase 1 proposal artifacts.
+S&P 500 sample data (CSV only).
 
-Writes:
-  sample_data/full_load_sample.csv      — 5y history, all 10 tickers (full-load payload shape)
-  sample_data/incremental_load_sample.csv — last 5 trading days (incremental payload shape)
-  sample_data/company_profile_sample.json — static reference data snapshot
-  sample_data/bronze_sample.csv         — small Bronze-style subset (README quick reference)
-  sample_data/silver_sample.csv         — cleansed subset aligned to Silver schema
+Wikipedia ticker list + batched yf.download. Two separate runs (instructor incremental rule).
+
+  python -u scripts/generate_sample_data.py --mode full --end-date 2026-09-28
+  python -u scripts/generate_sample_data.py --mode incremental --start-date 2026-09-29
+
+Progress: sample_data/download_progress.log
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import time
-from datetime import datetime, timezone
+import warnings
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
-import requests
 import yfinance as yf
 
-TICKERS = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "JPM", "XOM", "PG", "DIS"]
-OUT_DIR = Path(__file__).resolve().parents[1] / "sample_data"
+warnings.filterwarnings("ignore", category=FutureWarning)
 
-YAHOO_CHART = "https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-    )
-}
+ROOT = Path(__file__).resolve().parents[1]
+OUT_DIR = ROOT / "sample_data"
+TICKER_CSV = ROOT / "data" / "sp500_tickers.csv"
+WIKI_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+FULL_CSV = OUT_DIR / "full_load_sample.csv"
+INCREMENTAL_CSV = OUT_DIR / "incremental_load_sample.csv"
+MANIFEST = OUT_DIR / "MANIFEST.json"
+PROGRESS_LOG = OUT_DIR / "download_progress.log"
 
-# Fallback when live profile API is unavailable (public reference data).
-STATIC_PROFILES: list[dict] = [
-    {
-        "ticker": "AAPL",
-        "company_name": "Apple Inc.",
-        "sector": "Information Technology",
-        "industry": "Consumer Electronics",
-        "country": "United States",
-        "website": "https://www.apple.com",
-        "employees": 161000,
-    },
-    {
-        "ticker": "MSFT",
-        "company_name": "Microsoft Corporation",
-        "sector": "Information Technology",
-        "industry": "Software—Infrastructure",
-        "country": "United States",
-        "website": "https://www.microsoft.com",
-        "employees": 228000,
-    },
-    {
-        "ticker": "NVDA",
-        "company_name": "NVIDIA Corporation",
-        "sector": "Information Technology",
-        "industry": "Semiconductors",
-        "country": "United States",
-        "website": "https://www.nvidia.com",
-        "employees": 36000,
-    },
-    {
-        "ticker": "GOOGL",
-        "company_name": "Alphabet Inc.",
-        "sector": "Communication Services",
-        "industry": "Internet Content & Information",
-        "country": "United States",
-        "website": "https://abc.xyz",
-        "employees": 182000,
-    },
-    {
-        "ticker": "DIS",
-        "company_name": "The Walt Disney Company",
-        "sector": "Communication Services",
-        "industry": "Entertainment",
-        "country": "United States",
-        "website": "https://www.thewaltdisneycompany.com",
-        "employees": 225000,
-    },
-    {
-        "ticker": "AMZN",
-        "company_name": "Amazon.com, Inc.",
-        "sector": "Consumer Discretionary",
-        "industry": "Internet Retail",
-        "country": "United States",
-        "website": "https://www.amazon.com",
-        "employees": 1525000,
-    },
-    {
-        "ticker": "TSLA",
-        "company_name": "Tesla, Inc.",
-        "sector": "Consumer Discretionary",
-        "industry": "Auto Manufacturers",
-        "country": "United States",
-        "website": "https://www.tesla.com",
-        "employees": 125665,
-    },
-    {
-        "ticker": "JPM",
-        "company_name": "JPMorgan Chase & Co.",
-        "sector": "Financials",
-        "industry": "Banks—Diversified",
-        "country": "United States",
-        "website": "https://www.jpmorganchase.com",
-        "employees": 317233,
-    },
-    {
-        "ticker": "PG",
-        "company_name": "The Procter & Gamble Company",
-        "sector": "Consumer Staples",
-        "industry": "Household & Personal Products",
-        "country": "United States",
-        "website": "https://www.pg.com",
-        "employees": 107000,
-    },
-    {
-        "ticker": "XOM",
-        "company_name": "Exxon Mobil Corporation",
-        "sector": "Energy",
-        "industry": "Oil & Gas Integrated",
-        "country": "United States",
-        "website": "https://corporate.exxonmobil.com",
-        "employees": 62000,
-    },
+CHUNK_SIZE = 100
+CHUNK_PAUSE_SEC = 25.0
+
+COLUMNS = [
+    "trade_date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "adj_close",
+    "volume",
+    "dividends",
+    "stock_splits",
+    "ticker",
+    "ingested_at",
+    "_ingest_date",
+    "source",
 ]
 
 
-def attach_ingest_metadata(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
-    df = df.copy()
-    df["ticker"] = ticker
-    df["dividends"] = 0.0
-    df["stock_splits"] = 0.0
-    df["ingested_at"] = datetime.now(timezone.utc).isoformat()
-    df["_ingest_date"] = datetime.now(timezone.utc).date().isoformat()
-    df["source"] = "yfinance"
-    return df
+def log(msg: str) -> None:
+    line = f"[{datetime.now(timezone.utc).isoformat()}] {msg}"
+    print(line, flush=True)
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    with PROGRESS_LOG.open("a", encoding="utf-8") as fh:
+        fh.write(line + "\n")
 
 
-def fetch_chart_range(ticker: str, range_: str) -> pd.DataFrame:
-    response = requests.get(
-        YAHOO_CHART.format(ticker=ticker),
-        params={"interval": "1d", "range": range_},
-        headers=HEADERS,
-        timeout=60,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    result = payload["chart"]["result"][0]
-    quote = result["indicators"]["quote"][0]
-    adj = result["indicators"]["adjclose"][0]["adjclose"]
-    timestamps = result["timestamp"]
-
-    frame = pd.DataFrame(
-        {
-            "trade_date": pd.to_datetime(timestamps, unit="s", utc=True).date,
-            "open": quote["open"],
-            "high": quote["high"],
-            "low": quote["low"],
-            "close": quote["close"],
-            "adj_close": adj,
-            "volume": quote["volume"],
-        }
-    )
-    frame = frame.dropna(subset=["open", "high", "low", "close"])
-    frame["volume"] = frame["volume"].fillna(0).astype("int64")
-    return attach_ingest_metadata(frame, ticker)
+def load_tickers() -> list[str]:
+    if not TICKER_CSV.exists():
+        raise SystemExit(f"Missing {TICKER_CSV}. Run: python scripts/fetch_sp500_tickers.py")
+    tickers = pd.read_csv(TICKER_CSV)["ticker"].astype(str).str.replace(".", "-", regex=False).tolist()
+    log(f"Loaded {len(tickers)} tickers from {TICKER_CSV.name}")
+    return tickers
 
 
-def download_ticker(ticker: str, range_: str) -> pd.DataFrame:
-    try:
-        period = "5y" if range_ == "5y" else "5d"
-        raw = yf.download(ticker, period=period, progress=False, auto_adjust=False)
-        if raw is not None and not raw.empty:
-            df = raw.reset_index()
-            df.columns = [str(c).lower().replace(" ", "_") for c in df.columns]
-            if "date" in df.columns:
-                df = df.rename(columns={"date": "trade_date"})
-            if "adj close" in " ".join(str(c) for c in raw.columns):
-                pass
-            for col in list(df.columns):
-                if col.replace("_", " ") == "adj close" or col == "adj_close":
-                    continue
-            if "adj_close" not in df.columns:
-                close_col = [c for c in df.columns if "adj" in c and "close" in c]
-                if close_col:
-                    df = df.rename(columns={close_col[0]: "adj_close"})
-            if "adj_close" not in df.columns:
-                df["adj_close"] = df["close"]
-            if "dividends" not in df.columns:
-                df["dividends"] = 0.0
-            if "stock_splits" not in df.columns:
-                df["stock_splits"] = 0.0
-            keep = [
-                "trade_date",
-                "open",
-                "high",
-                "low",
-                "close",
-                "adj_close",
-                "volume",
-                "dividends",
-                "stock_splits",
-            ]
-            df = df[[c for c in keep if c in df.columns]]
-            return attach_ingest_metadata(df, ticker)
-    except Exception as exc:  # noqa: BLE001
-        print(f"[yfinance] {ticker} failed ({exc}); using chart API")
-
-    return fetch_chart_range(ticker, range_)
+def meta() -> dict[str, str]:
+    now = datetime.now(timezone.utc)
+    return {"ingested_at": now.isoformat(), "_ingest_date": now.date().isoformat(), "source": "yfinance"}
 
 
-def build_silver_sample(bronze: pd.DataFrame) -> pd.DataFrame:
-    cols = [
-        "trade_date",
-        "ticker",
-        "open",
-        "high",
-        "low",
-        "close",
-        "adj_close",
-        "volume",
-    ]
-    silver = bronze[cols].copy()
-    silver["ticker"] = silver["ticker"].str.upper().str.strip()
-    silver["currency"] = "USD"
-    silver["source"] = "yfinance"
-    silver["silver_loaded_at"] = datetime.now(timezone.utc).isoformat()
-    for price_col in ("open", "high", "low", "close"):
-        silver[price_col] = silver[price_col].round(4)
-    silver = silver.drop_duplicates(subset=["trade_date", "ticker"])
-    return silver
+def long_frame(raw: pd.DataFrame, tickers: list[str], end: date) -> pd.DataFrame:
+    m = meta()
+    parts: list[pd.DataFrame] = []
+    if raw is None or raw.empty:
+        return pd.DataFrame()
 
-
-def build_company_profiles() -> list[dict]:
-    profiles: list[dict] = []
-    ingested_at = datetime.now(timezone.utc).isoformat()
-    for ticker in TICKERS:
-        try:
-            info = yf.Ticker(ticker, session=requests.Session()).info
-            if info and info.get("longName"):
-                profiles.append(
-                    {
-                        "ticker": ticker,
-                        "company_name": info.get("longName") or info.get("shortName"),
-                        "sector": info.get("sector"),
-                        "industry": info.get("industry"),
-                        "country": info.get("country"),
-                        "website": info.get("website"),
-                        "employees": info.get("fullTimeEmployees"),
-                        "ingested_at": ingested_at,
-                    }
-                )
-                time.sleep(1)
+    if isinstance(raw.columns, pd.MultiIndex):
+        for sym in tickers:
+            try:
+                sub = raw[sym].copy()
+            except KeyError:
                 continue
-        except Exception:
-            pass
+            if sub.dropna(how="all").empty:
+                continue
+            sub = sub.reset_index()
+            sub.columns = [str(c).lower().replace(" ", "_") for c in sub.columns]
+            if "date" in sub.columns:
+                sub = sub.rename(columns={"date": "trade_date"})
+            if "adj_close" not in sub.columns and "close" in sub.columns:
+                sub["adj_close"] = sub["close"]
+            if "dividends" not in sub.columns:
+                sub["dividends"] = 0.0
+            if "stock_splits" not in sub.columns:
+                sub["stock_splits"] = 0.0
+            sub["trade_date"] = pd.to_datetime(sub["trade_date"]).dt.date
+            sub = sub[sub["trade_date"] <= end]
+            sub["ticker"] = sym.upper()
+            for k, v in m.items():
+                sub[k] = v
+            parts.append(sub[[c for c in COLUMNS if c in sub.columns]])
+    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
-        static = next(row for row in STATIC_PROFILES if row["ticker"] == ticker)
-        profiles.append({**static, "ingested_at": ingested_at})
-    return profiles
+
+def download_batch(tickers: list[str], start: date, end: date, chunk_size: int, pause: float) -> pd.DataFrame:
+    chunks = [tickers[i : i + chunk_size] for i in range(0, len(tickers), chunk_size)]
+    log(f"Plan: {len(chunks)} yf.download call(s), pause {pause}s")
+    frames: list[pd.DataFrame] = []
+    got: set[str] = set()
+
+    for n, chunk in enumerate(chunks, 1):
+        log(f"Chunk {n}/{len(chunks)} — downloading {len(chunk)} symbols …")
+        t0 = time.time()
+        raw = yf.download(
+            chunk,
+            start=start.isoformat(),
+            end=(end + timedelta(days=1)).isoformat(),
+            interval="1d",
+            group_by="ticker",
+            auto_adjust=False,
+            threads=False,
+            progress=True,
+        )
+        frame = long_frame(raw, chunk, end)
+        log(f"Chunk {n} done in {time.time() - t0:.0f}s — {len(frame):,} rows")
+        if not frame.empty:
+            frames.append(frame)
+            got.update(frame["ticker"].unique())
+        if n < len(chunks):
+            log(f"Sleep {pause}s (rate limit)")
+            time.sleep(pause)
+
+    missing = [t for t in tickers if t.upper() not in got]
+    if missing:
+        (OUT_DIR / "download_failures.txt").write_text("\n".join(missing), encoding="utf-8")
+        log(f"{len(missing)} symbols missing — see download_failures.txt")
+
+    if not frames:
+        raise SystemExit("No data returned. Wait 30–60 min and run once (Yahoo rate limit).")
+    out = pd.concat(frames, ignore_index=True)
+    log(f"Total: {len(out):,} rows, {out['ticker'].nunique()} symbols")
+    return out
+
+
+def previews(full: pd.DataFrame) -> None:
+    head = full.head(200)
+    head.to_csv(OUT_DIR / "bronze_sample.csv", index=False)
+    s = head[["trade_date", "ticker", "open", "high", "low", "close", "adj_close", "volume"]].copy()
+    s["currency"] = "USD"
+    s["source"] = "yfinance"
+    s.to_csv(OUT_DIR / "silver_sample.csv", index=False)
+
+
+def company_preview() -> None:
+    rows = pd.read_csv(TICKER_CSV).head(20)
+    ts = datetime.now(timezone.utc).isoformat()
+    data = [
+        {"ticker": r.ticker, "company_name": r.company_name, "sector": r.sector, "ingested_at": ts}
+        for r in rows.itertuples(index=False)
+    ]
+    (OUT_DIR / "company_profile_sample.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def save_manifest(**fields: object) -> None:
+    data = json.loads(MANIFEST.read_text(encoding="utf-8")) if MANIFEST.exists() else {}
+    data.update(fields)
+    MANIFEST.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def run_full(end: date, chunk: int, pause: float) -> None:
+    PROGRESS_LOG.write_text("", encoding="utf-8")
+    log(f"FULL LOAD through {end} -> {FULL_CSV.name}")
+    tickers = load_tickers()
+    start = end - timedelta(days=365 * 5 + 30)
+    full = download_batch(tickers, start, end, chunk, pause)
+    full.to_csv(FULL_CSV, index=False)
+    previews(full)
+    company_preview()
+    save_manifest(
+        full_load_cutoff_date=end.isoformat(),
+        full_load_row_count=len(full),
+        full_load_trade_date_max=str(full["trade_date"].max()),
+        symbols_downloaded=int(full["ticker"].nunique()),
+    )
+    log(f"Wrote {FULL_CSV}")
+
+
+def run_incremental(start: date, chunk: int, pause: float) -> None:
+    if not FULL_CSV.exists():
+        raise SystemExit(f"Run full load first ({FULL_CSV.name}).")
+    full_max = pd.to_datetime(pd.read_csv(FULL_CSV, usecols=["trade_date"])["trade_date"].max()).date()
+    if start <= full_max:
+        raise SystemExit(f"--start-date must be after full max {full_max}")
+    log(f"INCREMENTAL from {start} -> {INCREMENTAL_CSV.name}")
+    tickers = load_tickers()
+    inc = download_batch(tickers, start, date.today(), chunk, pause)
+    if (pd.to_datetime(inc["trade_date"]).dt.date <= full_max).any():
+        raise SystemExit("Incremental overlaps full load.")
+    inc.to_csv(INCREMENTAL_CSV, index=False)
+    save_manifest(
+        incremental_start_date=start.isoformat(),
+        incremental_row_count=len(inc),
+        incremental_trade_date_min=str(inc["trade_date"].min()),
+        incremental_trade_date_max=str(inc["trade_date"].max()),
+    )
+    log(f"Wrote {INCREMENTAL_CSV}")
 
 
 def main() -> None:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    full_frames: list[pd.DataFrame] = []
-    for ticker in TICKERS:
-        print(f"Full load sample: {ticker}")
-        full_frames.append(download_ticker(ticker, "5y"))
-        time.sleep(1)
-
-    full_load = pd.concat(full_frames, ignore_index=True)
-    full_path = OUT_DIR / "full_load_sample.csv"
-    full_load.to_csv(full_path, index=False)
-    size_mb = full_path.stat().st_size / (1024 * 1024)
-    print(f"Wrote {full_path} ({len(full_load):,} rows, {size_mb:.2f} MB)")
-
-    incremental_frames: list[pd.DataFrame] = []
-    for ticker in TICKERS:
-        print(f"Incremental sample: {ticker}")
-        incremental_frames.append(download_ticker(ticker, "5d"))
-        time.sleep(1)
-
-    incremental = pd.concat(incremental_frames, ignore_index=True)
-    inc_path = OUT_DIR / "incremental_load_sample.csv"
-    incremental.to_csv(inc_path, index=False)
-    inc_kb = inc_path.stat().st_size / 1024
-    print(f"Wrote {inc_path} ({len(incremental):,} rows, {inc_kb:.1f} KB)")
-
-    bronze_sample = full_load.head(200)
-    bronze_sample.to_csv(OUT_DIR / "bronze_sample.csv", index=False)
-
-    silver_sample = build_silver_sample(bronze_sample)
-    silver_sample.to_csv(OUT_DIR / "silver_sample.csv", index=False)
-
-    profiles = build_company_profiles()
-    profile_path = OUT_DIR / "company_profile_sample.json"
-    profile_path.write_text(json.dumps(profiles, indent=2), encoding="utf-8")
-    print(f"Wrote {profile_path} ({len(profiles)} companies)")
+    p = argparse.ArgumentParser()
+    p.add_argument("--mode", choices=["full", "incremental"], required=True)
+    p.add_argument("--end-date", type=date.fromisoformat)
+    p.add_argument("--start-date", type=date.fromisoformat)
+    p.add_argument("--chunk-size", type=int, default=CHUNK_SIZE)
+    p.add_argument("--pause-sec", type=float, default=CHUNK_PAUSE_SEC)
+    args = p.parse_args()
+    if args.mode == "full":
+        if not args.end_date:
+            raise SystemExit("--end-date required")
+        run_full(args.end_date, args.chunk_size, args.pause_sec)
+    else:
+        if not args.start_date:
+            raise SystemExit("--start-date required")
+        run_incremental(args.start_date, args.chunk_size, args.pause_sec)
 
 
 if __name__ == "__main__":
