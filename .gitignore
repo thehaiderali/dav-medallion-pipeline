@@ -23,9 +23,9 @@ spark-warehouse/
 .DS_Store
 Thumbs.db
 
-# Large local extracts (Gold exports stay small in dashboard/export/)
+# Large local extracts
 *.parquet
-!dashboard/export/.gitkeep
+!sample_data/*.parquet
 
 # Power BI lock files
 *.pbix.lock
