@@ -109,7 +109,7 @@ class AuditedStep:
                     "error_message": self.error_message,
                 }
             )
-        except Exception as log_error:  # never let logging mask the real outcome
+        except Exception as log_error:
             raise RuntimeError("Execution audit persistence failed") from log_error
         # swallow ordinary errors so the rest of the batch list keeps running
         return bool(exc_type is not None and self.suppress_errors and issubclass(exc_type, Exception))

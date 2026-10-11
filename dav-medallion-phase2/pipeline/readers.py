@@ -39,7 +39,7 @@ def header_schema(source):
     else:
         with open(path, encoding="utf-8-sig", newline="") as stream:
             header = next(csv.reader(stream))
-    if not header or len(header) != len(set(header)) or any(not c or "`" in c for c in header):
+    if not header or len(header) != len(set(header)) or any(not c or "`" in c or c == "_corrupt_record" for c in header):
         raise ValueError("CSV header must contain unique, nonempty safe column names")
     return StructType([StructField(c, StringType(), True) for c in header])
 
@@ -85,8 +85,10 @@ def read_price_payloads(spark, source, lineage_mode, file_format="auto"):
     if selected == "jsonl":
         return with_file_lineage(spark.read.schema(TEXT_SCHEMA).text(source), lineage_mode)
     if selected == "csv":
-        contract = header_schema(source)
-        frame = spark.read.schema(contract).option("header", True).option("mode", "PERMISSIVE").csv(source)
+        contract = header_schema(source).add("_corrupt_record", StringType(), True)
+        frame = (spark.read.schema(contract).option("header", True)
+                 .option("mode", "PERMISSIVE")
+                 .option("columnNameOfCorruptRecord", "_corrupt_record").csv(source))
     elif selected == "parquet":
         contract = parquet_schema(source)
         frame = spark.read.schema(contract).parquet(source)
@@ -95,4 +97,4 @@ def read_price_payloads(spark, source, lineage_mode, file_format="auto"):
     original_columns = frame.columns
     frame = with_file_lineage(frame, lineage_mode)
     # Preserve extra columns and original values; the Silver contract owns validation.
-    return frame.select(F.to_json(F.struct(*[F.col(f"`{c}`").cast("string").alias(c) for c in original_columns]), {"ignoreNullFields": "false"}).alias("value"), "_source_file")
+    return frame.select(F.to_json(F.struct(*[F.col(f"`{c}`").cast("string").alias("_csv_corrupt_record" if c == "_corrupt_record" else c) for c in original_columns]), {"ignoreNullFields": "false"}).alias("value"), "_source_file")

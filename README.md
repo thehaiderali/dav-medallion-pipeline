@@ -25,7 +25,7 @@ Wikipedia -> committed company_metadata.csv ------------> Bronze companies (OVER
 - `dav-medallion-phase2/pipeline/`: explicit contracts, readers, Delta storage, pipeline and auditing.
 - `dav-medallion-phase2/notebooks/`: manual Bronze/Silver notebooks and executable grading demonstration.
 - `.github/workflows/daily-incremental.yml`: midnight one-day extraction and publication.
-- `scripts/verify_phase2.py`: executable local Spark/Delta proof, with saved JSON output.
+- `dav-medallion-phase2/notebooks/03_demo_idempotency_and_audit.py`: executable serverless grading proof, with JSON output saved to a Volume.
 
 ## Extraction periods
 
@@ -46,7 +46,7 @@ Use `.env` locally (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, optional `AWS_
 
 All schemas are explicit `StructType`/`StructField` contracts in `pipeline/contracts.py` and `pipeline/schemas.py`. JSONL reads use an explicit text schema then explicit JSON parsing. CSV headers and Parquet footers are metadata-inspected before constructing an explicit schema for the Spark reader. No Spark schema inference is used.
 
-For **Databricks Free Edition**, use managed tables: `lakehouse_root=uc:<catalog>.dav_phase2`, and raw files in `/Volumes/<catalog>/<schema>/<volume>/...`. The table names below live in that schema. For local Spark, pass a filesystem lakehouse root; the tables live under `bronze/`, `silver/`, `quarantine/`, and `ops/`.
+This pipeline targets **Databricks Free Edition serverless**. Use managed tables: `lakehouse_root=uc:<catalog>.dav_phase2`, and raw files in `/Volumes/<catalog>/<schema>/<volume>/...`. The table names below live in that schema. It does not create a local Spark session, cache/persist DataFrames, use RDDs/JVM-only Delta APIs, or store Delta tables inside a Volume. Databricks provides PySpark, Delta Lake and PyArrow; do not install a pinned local Spark/Delta runtime in the notebook.
 
 Use a fresh schema when migrating from the earlier PR's incompatible table contracts. Python schema changes do not populate old persisted rows automatically.
 
@@ -123,7 +123,7 @@ Grain: one enriched company/trading-day observation. Composite primary key: **(`
 
 ### Quarantine and operational tables
 
-`quarantine_prices`: primary key `record_key STRING`; raw price columns (all STRING), `raw_payload STRING`, `rescued_data STRING`, `reject_reason STRING`, `reject_stage STRING`, `batch_date DATE`, `source_file STRING`, `batch_id STRING`, `load_timestamp TIMESTAMP`. Bad JSON, invalid/null dates, missing tickers, nonnumeric/nonpositive/non-finite prices, invalid/fractional/negative/overflow volume, high below low, and unmatched company metadata are isolated. Exact rejected replays are deduplicated with MERGE. Historical rejects remain available for inspection.
+`quarantine_prices`: primary key `record_key STRING`; raw price columns (all STRING), `raw_payload STRING`, `rescued_data STRING`, `reject_reason STRING`, `reject_stage STRING`, `batch_date DATE`, `source_file STRING`, `batch_id STRING`, `load_timestamp TIMESTAMP`. Bad JSON/malformed CSV, invalid/null dates, missing tickers, nonnumeric/nonpositive/non-finite prices, invalid/fractional/negative/overflow volume, high below low, and unmatched company metadata are isolated. Exact rejected replays are deduplicated with MERGE. Historical rejects remain available for inspection.
 
 `pipeline_execution_logs`: append-only operational records; logical identity `(run_id, pipeline_layer, start_time, parameter_processed)`.
 
@@ -157,17 +157,11 @@ Statuses are `SUCCESS`, `FAILURE`, `SKIPPED`. Each file/table operation is audit
 | metadata_file | Uploaded company CSV | Same CSV, or blank after initialization | Same behavior |
 | lakehouse_root | uc:catalog.dav_phase2 | Same | Same |
 
-**Manual fallback:** `source_file` always overrides automatic folder lookup. It works for full and incremental inputs without changing code. Select `file_format` explicitly for folders/nonstandard extensions. Without `source_file`, set `raw_path`; lookup is `full/full_load.jsonl` or `incremental/<process_date>/data.jsonl`. Local paths, Volumes and accessible S3 paths are accepted; an S3 path requires storage permissions, so uploading to a Volume is the credential-free Databricks fallback.
+**Manual fallback:** `source_file` always overrides automatic folder lookup. It works for full and incremental inputs without changing code. Select `file_format` explicitly for folders/nonstandard extensions. Without `source_file`, set `raw_path`; lookup is `full/full_load.jsonl` or `incremental/<process_date>/data.jsonl`. Use uploaded Volume paths. S3 paths require separately configured storage permissions; a Windows local path cannot be read by cloud Spark.
 
 For a window, leave `process_date`, `batch_id`, and `source_file` blank; supply inclusive `start_date`/`end_date` and a partitioned `raw_path`. For Silver-only replay, supply a `batch_id` such as `full_20260930`. The pipeline selects by batch date; full historical trading dates live inside the one full batch.
 
-Local CLI (run from `dav-medallion-phase2/`):
-
-```bash
-python -m pipeline.run_pipeline --layer all --load-type full --process-date 2026-09-30 --source-file ../raw_data/full/full_load.jsonl --metadata-file ../data/company_metadata.csv --lakehouse-root ../artifacts/lakehouse
-python -m pipeline.run_pipeline --layer all --load-type incremental --process-date 2026-10-01 --source-file ../data/price_slices/2026-10-01.jsonl --metadata-file ../data/company_metadata.csv --lakehouse-root ../artifacts/lakehouse
-python -m pipeline.run_pipeline --layer bronze_to_silver --batch-id full_20260930 --lakehouse-root ../artifacts/lakehouse
-```
+The notebooks call `pipeline.engine.run_pipeline(spark, ...)` using Databricks' existing session. Both functions and widgets accept full/incremental parameters and manual file paths.
 
 ## MERGE, replays and robustness
 
@@ -191,15 +185,7 @@ The workflow uploads one slice to S3 and commits `data/price_slices/<date>.jsonl
 
 Run `03_demo_idempotency_and_audit.py` in Databricks with a writable Volume input directory and a fresh dedicated demo schema. It executes full and incremental loads, exact rerun equality, in-place update, raw/Silver historical backfills, added-column evolution, bad-record quarantine, stale-batch protection and audit assertions. It displays schemas/tables/logs and writes `phase2_evidence.json` to the selected input directory. Export the executed notebook with outputs or commit the downloaded evidence; the unexecuted notebook alone is not proof.
 
-Local checks (Java 17 and Spark/Delta dependencies required):
-
-```bash
-pip install -r dav-medallion-phase2/requirements.txt
-python -m pytest dav-medallion-phase2/tests -q -ra
-python scripts/verify_phase2.py
-```
-
-Local proof is labeled as local Spark, not Databricks. Windows Spark file operations may require the runtime's Hadoop native support; run the same demo notebook in Databricks if local Spark is unavailable.
+Execution verification happens in Databricks serverless using the demo notebook. Source review alone does not establish runtime correctness; save the real notebook outputs/JSON or record the demonstration before submitting.
 
 In notebook SQL cells, after the run notebooks create validation views:
 

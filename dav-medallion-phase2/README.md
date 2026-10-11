@@ -9,8 +9,8 @@ Entry points:
 1. `notebooks/01_raw_to_bronze.py` — append raw prices and initialize the company snapshot.
 2. `notebooks/02_bronze_to_silver.py` — cast, quarantine, enrich and MERGE.
 3. `notebooks/03_demo_idempotency_and_audit.py` — runnable rubric demonstration.
-4. `notebooks/04_run_pipeline_job.py` — optional single-notebook manual run of both steps.
 
 Use `process_date`, `load_type`, `source_file` (manual override), `metadata_file`,
 `file_format`, and `lakehouse_root`. Free Edition uses `/Volumes/...` raw files
-and `uc:<catalog>.<schema>` managed Delta tables. No Gold layer is implemented.
+and `uc:<catalog>.<schema>` managed Delta tables. Databricks supplies the runtime;
+no local Spark setup, caching/persist, or Gold layer is used.

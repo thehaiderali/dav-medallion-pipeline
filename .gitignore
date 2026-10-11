@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+.pytest_cache/
 *.py[cod]
 *.egg-info/
 .venv/
@@ -37,3 +38,4 @@ Thumbs.db
 docs/DATABRICKS_RUN_TUTORIAL.local.md
 raw_data/
 artifacts/
+lakehouse/

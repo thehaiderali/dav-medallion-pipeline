@@ -39,9 +39,11 @@ def test_raw_file_resolution_mirrors_phase1_layout():
 
 
 def test_lakehouse_paths():
-    paths = LakehousePaths.from_root("dbfs:/FileStore/lakehouse/")
-    assert paths.bronze == "dbfs:/FileStore/lakehouse/bronze/sp500_prices"
-    assert paths.logs == "dbfs:/FileStore/lakehouse/ops/pipeline_execution_logs"
+    paths = LakehousePaths.from_root("uc:workspace.dav_phase2")
+    assert paths.bronze == "uc:workspace.dav_phase2.bronze_prices"
+    assert paths.logs == "uc:workspace.dav_phase2.pipeline_execution_logs"
+    with pytest.raises(ValueError):
+        LakehousePaths.from_root("dbfs:/FileStore/lakehouse")
 
 
 def make_logger():

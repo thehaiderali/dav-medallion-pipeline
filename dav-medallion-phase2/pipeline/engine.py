@@ -14,7 +14,7 @@ from .audit import AuditLogger, AuditedStep
 from .config import LakehousePaths, date_range, make_batch_id, parse_date, resolve_raw_file
 from .contracts import (
     BRONZE_SCHEMA, COMPANY_COLUMNS, COMPANY_RAW_SCHEMA, COMPANY_SCHEMA,
-    PRICE_COLUMNS, QUARANTINE_SCHEMA, RAW_SCHEMA, SILVER_SCHEMA, TEXT_SCHEMA,
+    PRICE_COLUMNS, QUARANTINE_SCHEMA, RAW_SCHEMA, SILVER_SCHEMA,
 )
 from .schemas import DRIFT_SCHEMA, LOG_SCHEMA
 from .storage import ensure_table, merge_into, read_table, write_table
@@ -40,9 +40,7 @@ def ensure_tables(spark, paths):
 def with_file_lineage(frame, lineage_mode):
     if lineage_mode == "metadata":
         return frame.select("*", F.col("_metadata.file_path").alias("_source_file"))
-    if lineage_mode == "input_file_name":
-        return frame.withColumn("_source_file", F.input_file_name())
-    raise ValueError("lineage_mode must be metadata or input_file_name")
+    raise ValueError("Serverless file lineage uses lineage_mode='metadata'")
 
 
 def load_metadata(spark, paths, logger, metadata_file, lineage_mode, refresh=False):
@@ -57,22 +55,19 @@ def load_metadata(spark, paths, logger, metadata_file, lineage_mode, refresh=Fal
             F.upper(F.regexp_replace(F.trim("ticker"), r"\.", "-")).alias("ticker"),
             *[F.trim(c).alias(c) for c in COMPANY_COLUMNS[1:]],
             F.col("_source_file").alias("snapshot_file"),
-        ).cache()
-        try:
-            step.rows_read = cleaned.count()
-            invalid = cleaned.where(" OR ".join(f"`{c}` IS NULL OR trim(`{c}`) = ''" for c in COMPANY_COLUMNS)).count()
-            if not step.rows_read or invalid or cleaned.groupBy("ticker").count().where("count > 1").count():
-                raise ValueError("Company snapshot must be nonempty, complete and unique on ticker")
-            digest = hashlib.sha256(json.dumps([r.asDict() for r in cleaned.select(*COMPANY_COLUMNS).orderBy("ticker").collect()], sort_keys=True).encode()).hexdigest()[:16]
-            step.batch_id = f"metadata_{digest}"
-            companies = (cleaned.withColumn("row_hash", content_hash(COMPANY_COLUMNS))
-                         .withColumn("source_file", F.lit(WIKIPEDIA_URL))
-                         .withColumn("batch_id", F.lit(f"metadata_{digest}"))
-                         .withColumn("load_timestamp", F.current_timestamp()))
-            write_table(companies, paths.metadata, "overwrite")
-            step.rows_inserted = step.rows_read  # snapshot replacement, not an upsert
-        finally:
-            cleaned.unpersist()
+        )
+        step.rows_read = cleaned.count()
+        invalid = cleaned.where(" OR ".join(f"`{c}` IS NULL OR trim(`{c}`) = ''" for c in COMPANY_COLUMNS)).count()
+        if not step.rows_read or invalid or cleaned.groupBy("ticker").count().where("count > 1").count():
+            raise ValueError("Company snapshot must be nonempty, complete and unique on ticker")
+        digest = hashlib.sha256(json.dumps([r.asDict() for r in cleaned.select(*COMPANY_COLUMNS).orderBy("ticker").collect()], sort_keys=True).encode()).hexdigest()[:16]
+        step.batch_id = f"metadata_{digest}"
+        companies = (cleaned.withColumn("row_hash", content_hash(COMPANY_COLUMNS))
+                     .withColumn("source_file", F.lit(WIKIPEDIA_URL))
+                     .withColumn("batch_id", F.lit(f"metadata_{digest}"))
+                     .withColumn("load_timestamp", F.current_timestamp()))
+        write_table(companies, paths.metadata, "overwrite")
+        step.rows_inserted = step.rows_read  # snapshot replacement, not an upsert
     return step
 
 
@@ -88,24 +83,25 @@ def promote_metadata(spark, paths, logger):
     return step
 
 
-def raw_to_bronze(spark, paths, logger, *, raw_path, load_type, batch_date, source_file=None, skip_missing=False, lineage_mode="input_file_name", file_format="auto"):
+def raw_to_bronze(spark, paths, logger, *, raw_path, load_type, batch_date, source_file=None, skip_missing=False, lineage_mode="metadata", file_format="auto"):
     source = resolve_raw_file(raw_path, load_type, batch_date, source_file)
     batch_id = make_batch_id(load_type, batch_date)
     with AuditedStep(logger, "RAW_TO_BRONZE", load_type, batch_id, source) as step:
         try:
             raw = read_price_payloads(spark, source, lineage_mode, file_format)
         except Exception as error:
-            if skip_missing and ("PATH_NOT_FOUND" in str(error) or "does not exist" in str(error)):
+            if skip_missing and (isinstance(error, FileNotFoundError) or "PATH_NOT_FOUND" in str(error) or "does not exist" in str(error)):
                 step.skip("Raw partition is absent")
                 return step
             raise
         parsed = raw.withColumn("_fields", F.from_json("value", MapType(StringType(), StringType())))
-        extra_keys = [r["key"] for r in parsed.select(F.explode(F.map_keys("_fields")).alias("key")).distinct().collect() if r["key"] not in PRICE_COLUMNS]
+        source_columns = [*RAW_SCHEMA.fieldNames(), "_csv_corrupt_record"]
+        extra_keys = [r["key"] for r in parsed.select(F.explode(F.map_keys("_fields")).alias("key")).distinct().collect() if r["key"] not in source_columns]
         contract = parsed.withColumn("_contract", F.from_json("value", RAW_SCHEMA, {"mode": "PERMISSIVE"}))
         bronze = contract.select(
             *[F.col(f"_contract.{c}").alias(c) for c in PRICE_COLUMNS],
             F.col("value").alias("raw_payload"),
-            F.to_json(F.map_filter("_fields", lambda k, v: ~k.isin(*PRICE_COLUMNS))).alias("rescued_data"),
+            F.to_json(F.map_filter("_fields", lambda k, v: ~k.isin(*source_columns))).alias("rescued_data"),
             F.col("_source_file").alias("source_file"),
             *[F.element_at("_fields", F.lit(key)).cast("string").alias("extra_" + re.sub(r"[^a-zA-Z0-9_]", "_", key)[:40] + "_" + hashlib.sha256(key.encode()).hexdigest()[:8]) for key in sorted(extra_keys)],
         )
@@ -114,17 +110,14 @@ def raw_to_bronze(spark, paths, logger, *, raw_path, load_type, batch_date, sour
                   .withColumn("load_type", F.lit(load_type)).withColumn("run_id", F.lit(logger.run_id))
                   .withColumn("record_key", content_hash(["batch_id", "source_file", "raw_payload"]))
                   .withColumn("bronze_row_id", F.expr("uuid()"))
-                  .withColumn("load_timestamp", F.current_timestamp()).cache())
-        try:
-            step.rows_read = bronze.count()
-            write_table(bronze, paths.bronze, evolve=True)  # raw arrivals are append-only, including replays
-            step.rows_inserted = step.rows_read
-            if extra_keys:
-                from .audit import utc_now
-                rows = [(logger.run_id, batch_id, source, "NEW_COLUMN", key, None, "string", "Bronze schema evolved; original JSON retained", utc_now()) for key in sorted(extra_keys)]
-                write_table(spark.createDataFrame(rows, DRIFT_SCHEMA), paths.drift)
-        finally:
-            bronze.unpersist()
+                  .withColumn("load_timestamp", F.current_timestamp()))
+        step.rows_read = bronze.count()
+        write_table(bronze, paths.bronze, evolve=True)  # raw arrivals are append-only, including replays
+        step.rows_inserted = step.rows_read
+        if extra_keys:
+            from .audit import utc_now
+            rows = [(logger.run_id, batch_id, source, "NEW_COLUMN", key, None, "string", "Bronze schema evolved; original JSON retained", utc_now()) for key in sorted(extra_keys)]
+            write_table(spark.createDataFrame(rows, DRIFT_SCHEMA), paths.drift)
     return step
 
 
@@ -140,6 +133,7 @@ def price_candidates(bronze):
         F.when(F.col("s_ticker").isNull() | (F.col("s_ticker") == ""), F.lit("MISSING_TICKER")),
         F.when(F.col("s_trade_date").isNull(), F.lit("INVALID_DATE")),
         F.when(F.from_json("raw_payload", RAW_SCHEMA).getField("_corrupt_record").isNotNull(), F.lit("INVALID_JSON")),
+        F.when(F.get_json_object("raw_payload", "$._csv_corrupt_record").isNotNull(), F.lit("MALFORMED_CSV")),
     ]
     for name in ["open", "high", "low", "close", "adj_close"]:
         col = F.col(f"s_{name}")
@@ -156,34 +150,28 @@ def price_candidates(bronze):
 def bronze_to_silver(spark, paths, logger, batch_id, load_type):
     with AuditedStep(logger, "BRONZE_TO_SILVER", load_type, batch_id, batch_id) as step:
         bronze = read_table(spark, paths.bronze).where(F.col("batch_id") == batch_id)
-        candidates = price_candidates(bronze).cache()
-        try:
-            step.rows_read = candidates.count()
-            metadata = read_table(spark, paths.silver_metadata)
-            unmatched = candidates.join(metadata.select(F.col("ticker").alias("s_ticker")), "s_ticker", "left_anti").withColumn("reject_reasons", F.array_union("reject_reasons", F.array(F.lit("MISSING_COMPANY_METADATA"))))
-            matched = candidates.join(metadata.select(F.col("ticker").alias("s_ticker")), "s_ticker", "left_semi")
-            rejected = matched.where(F.size("reject_reasons") > 0).unionByName(unmatched)
-            rejected = rejected.withColumn("reject_reason", F.concat_ws(";", "reject_reasons")).withColumn("reject_stage", F.lit("BRONZE_TO_SILVER"))
-            rq_window = Window.partitionBy("record_key").orderBy(F.col("load_timestamp").desc(), F.col("bronze_row_id").desc())
-            rejected = rejected.withColumn("_rn", F.row_number().over(rq_window)).where("_rn = 1").withColumn("load_timestamp", F.current_timestamp()).select(*QUARANTINE_SCHEMA.fieldNames()).cache()
-            try:
-                step.rows_quarantined = rejected.count()
-                if step.rows_quarantined:
-                    merge_into(spark, paths.quarantine, rejected, ["record_key"], "NOT (s.reject_reason <=> t.reject_reason)")
-                valid = matched.where(F.size("reject_reasons") == 0)
-                window = Window.partitionBy("s_ticker", "s_trade_date").orderBy(F.col("batch_date").desc(), F.col("load_timestamp").desc(), F.col("record_key").desc())
-                valid = valid.withColumn("_rn", F.row_number().over(window)).where("_rn = 1")
-                prices = valid.select(F.col("s_ticker").alias("ticker"), F.col("s_trade_date").alias("trade_date"), *[F.col(f"s_{c}").alias(c) for c in ["open", "high", "low", "close", "adj_close", "volume"]], "source_file", "batch_id", F.col("batch_date").alias("source_batch_date"))
-                company_fields = metadata.select("ticker", "company_name", "sector", "sub_industry", F.col("source_file").alias("metadata_source_file"), F.col("batch_id").alias("metadata_batch_id"))
-                enriched = prices.join(company_fields, "ticker", "inner")
-                business = ["ticker", "trade_date", "open", "high", "low", "close", "adj_close", "volume", "company_name", "sector", "sub_industry"]
-                enriched = enriched.withColumn("row_hash", content_hash(business)).withColumn("load_timestamp", F.current_timestamp()).select(*SILVER_SCHEMA.fieldNames())
-                result = merge_into(spark, paths.silver, enriched, ["ticker", "trade_date"], "s.source_batch_date > t.source_batch_date OR (s.source_batch_date = t.source_batch_date AND NOT (s.row_hash <=> t.row_hash))")
-                step.rows_inserted, step.rows_updated = result["inserted"], result["updated"]
-            finally:
-                rejected.unpersist()
-        finally:
-            candidates.unpersist()
+        candidates = price_candidates(bronze)
+        step.rows_read = candidates.count()
+        metadata = read_table(spark, paths.silver_metadata)
+        unmatched = candidates.join(metadata.select(F.col("ticker").alias("s_ticker")), "s_ticker", "left_anti").withColumn("reject_reasons", F.array_union("reject_reasons", F.array(F.lit("MISSING_COMPANY_METADATA"))))
+        matched = candidates.join(metadata.select(F.col("ticker").alias("s_ticker")), "s_ticker", "left_semi")
+        rejected = matched.where(F.size("reject_reasons") > 0).unionByName(unmatched)
+        rejected = rejected.withColumn("reject_reason", F.concat_ws(";", "reject_reasons")).withColumn("reject_stage", F.lit("BRONZE_TO_SILVER"))
+        rq_window = Window.partitionBy("record_key").orderBy(F.col("load_timestamp").desc(), F.col("bronze_row_id").desc())
+        rejected = rejected.withColumn("_rn", F.row_number().over(rq_window)).where("_rn = 1").withColumn("load_timestamp", F.current_timestamp()).select(*QUARANTINE_SCHEMA.fieldNames())
+        step.rows_quarantined = rejected.count()
+        if step.rows_quarantined:
+            merge_into(spark, paths.quarantine, rejected, ["record_key"], "NOT (s.reject_reason <=> t.reject_reason)")
+        valid = matched.where(F.size("reject_reasons") == 0)
+        window = Window.partitionBy("s_ticker", "s_trade_date").orderBy(F.col("batch_date").desc(), F.col("load_timestamp").desc(), F.col("record_key").desc())
+        valid = valid.withColumn("_rn", F.row_number().over(window)).where("_rn = 1")
+        prices = valid.select(F.col("s_ticker").alias("ticker"), F.col("s_trade_date").alias("trade_date"), *[F.col(f"s_{c}").alias(c) for c in ["open", "high", "low", "close", "adj_close", "volume"]], "source_file", "batch_id", F.col("batch_date").alias("source_batch_date"))
+        company_fields = metadata.select("ticker", "company_name", "sector", "sub_industry", F.col("source_file").alias("metadata_source_file"), F.col("batch_id").alias("metadata_batch_id"))
+        enriched = prices.join(company_fields, "ticker", "inner")
+        business = ["ticker", "trade_date", "open", "high", "low", "close", "adj_close", "volume", "company_name", "sector", "sub_industry"]
+        enriched = enriched.withColumn("row_hash", content_hash(business)).withColumn("load_timestamp", F.current_timestamp()).select(*SILVER_SCHEMA.fieldNames())
+        result = merge_into(spark, paths.silver, enriched, ["ticker", "trade_date"], "t.source_batch_date IS NULL OR s.source_batch_date > t.source_batch_date OR (s.source_batch_date = t.source_batch_date AND NOT (s.row_hash <=> t.row_hash))")
+        step.rows_inserted, step.rows_updated = result["inserted"], result["updated"]
     return step
 
 
@@ -192,6 +180,9 @@ def run_pipeline(spark, *, layer="all", lakehouse_root=None, raw_path=None, meta
     logger = AuditLogger(spark, paths.logs, run_id or uuid.uuid4().hex)
     parameters = json.dumps({"layer": layer, "process_date": str(process_date or run_date or date.today()), "start_date": str(start_date), "end_date": str(end_date), "batch_id": batch_id, "source_file": source_file}, sort_keys=True)
     steps = []
+    # Initialize the audit destination before parameter validation so invalid
+    # date/window selections can still produce a persisted FAILURE record.
+    ensure_table(spark, paths.logs, LOG_SCHEMA)
     with AuditedStep(logger, "PIPELINE", load_type, batch_id, parameters, suppress_errors=False) as invocation:
         if layer not in ("all", "raw_to_bronze", "bronze_to_silver"):
             raise ValueError("Unsupported layer")
@@ -203,13 +194,15 @@ def run_pipeline(spark, *, layer="all", lakehouse_root=None, raw_path=None, meta
             raise ValueError("start_date and end_date must be supplied together")
         if start_date and (process_date or run_date or batch_id):
             raise ValueError("Use one process_date/batch_id OR a backfill window")
+        if batch_id and (process_date or run_date):
+            raise ValueError("Use batch_id OR process_date, not both")
         if source_file and start_date:
             raise ValueError("An explicit source_file represents one batch; use process_date, not a window")
         if load_type == "full" and start_date:
             raise ValueError("Full load is one historical file; supply process_date")
         selected = parse_date(process_date or run_date or date.today())
         dates = list(date_range(parse_date(start_date), parse_date(end_date))) if start_date else [selected]
-        lineage_mode = lineage_mode or ("metadata" if paths.root.startswith("uc:") else "input_file_name")
+        lineage_mode = lineage_mode or "metadata"
         ensure_tables(spark, paths)
         if layer in ("all", "raw_to_bronze"):
             steps.append(load_metadata(spark, paths, logger, metadata_file, lineage_mode, refresh_metadata))

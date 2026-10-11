@@ -1,6 +1,0 @@
--r ../requirements.txt
-# Phase 2 (Databricks already provides pyspark and Delta; these are for local runs/tests)
-pyspark==3.5.3
-delta-spark==3.2.0
-pytest>=8.0
-pyyaml>=6,<7

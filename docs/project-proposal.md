@@ -1,5 +1,10 @@
 # Project Proposal
 
+> Historical Phase 1 proposal. Current ingestion dates, filenames and the
+> Databricks serverless Bronze/Silver implementation are documented in the
+> [repository README](../README.md). The legacy scripts mentioned below have
+> been consolidated into `ingestion/market_data.py`.
+
 ## Dataset
 
 This project ingests daily S&P 500 stock price data from Yahoo Finance using the open-source

@@ -1,4 +1,4 @@
-"""Executable rubric proof shared by Databricks and local Spark; no network needed."""
+"""Executable Databricks serverless rubric proof; no network needed."""
 from __future__ import annotations
 
 import json
@@ -10,11 +10,13 @@ from .storage import read_table
 
 
 def demo(spark, input_root, lakehouse_root):
+    paths = LakehousePaths.from_root(lakehouse_root)
+    if spark.catalog.tableExists(paths.silver[3:]):
+        raise ValueError("Use a fresh dedicated demo schema; this schema already contains Silver prices")
     directory = Path(input_root)
     directory.mkdir(parents=True, exist_ok=True)
     metadata = directory / "companies.csv"
     metadata.write_text("ticker,company_name,sector,sub_industry\nAAPL,Apple Inc.,Information Technology,Technology Hardware\nMSFT,Microsoft,Information Technology,Systems Software\n", encoding="utf-8")
-    paths = LakehousePaths.from_root(lakehouse_root)
 
     def price(ticker="AAPL", day="2026-09-30", close="104", **extras):
         return {"ticker": ticker, "date": day, "open": "100", "high": "110", "low": "99", "close": close, "adj_close": close, "volume": "1000", **extras}
@@ -37,6 +39,7 @@ def demo(spark, input_root, lakehouse_root):
     full = write("full.jsonl", [price(), price("MSFT"), price()])
     run("full load", layer="all", load_type="full", process_date="2026-09-30", source_file=full)
     before = [r.asDict() for r in read_table(spark, paths.silver).orderBy("ticker", "trade_date").collect()]
+    assert len(before) == 2, "Full load did not deduplicate the sample price keys"
     rerun = run("identical rerun", layer="all", load_type="full", process_date="2026-09-30", source_file=full)
     after = [r.asDict() for r in read_table(spark, paths.silver).orderBy("ticker", "trade_date").collect()]
     assert before == after, "Silver rows (including timestamps and lineage) changed on replay"
@@ -68,4 +71,4 @@ def demo(spark, input_root, lakehouse_root):
         assert read_table(spark, target).where("load_timestamp IS NULL OR source_file IS NULL OR batch_id IS NULL").count() == 0
     logs = [r.asDict() for r in read_table(spark, paths.logs).orderBy("start_time").collect()]
     assert all(r["parameter_processed"] and r["start_time"] <= r["end_time"] for r in logs)
-    return {"execution_environment": "Apache Spark / Delta Lake (local or Databricks depending on caller)", "silver_unchanged_on_identical_rerun": before == after, "duplicate_silver_keys": duplicates, "silver_rows": silver.count(), "bronze_schema": read_table(spark, paths.bronze).schema.jsonValue(), "silver_schema": silver.schema.jsonValue(), "history": history, "quarantine": rejects, "execution_logs": logs}
+    return {"execution_environment": "Databricks Free Edition serverless / Delta Lake", "silver_unchanged_on_identical_rerun": before == after, "duplicate_silver_keys": duplicates, "silver_rows": silver.count(), "bronze_schema": read_table(spark, paths.bronze).schema.jsonValue(), "silver_schema": silver.schema.jsonValue(), "history": history, "quarantine": rejects, "execution_logs": logs}

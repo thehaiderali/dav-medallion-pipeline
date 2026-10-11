@@ -63,11 +63,8 @@ jobs:
           LOAD_TYPE: ${{ steps.params.outputs.load_type }}
         run: |
           python scripts/advance_ingestion_cursor.py --process-date "$PROCESS_DATE"
-          if [ "$LOAD_TYPE" = incremental ]; then
-            mkdir -p data/price_slices
-            cp "raw_data/incremental/$PROCESS_DATE/data.jsonl" "data/price_slices/$PROCESS_DATE.jsonl"
-            git add -- "data/price_slices/$PROCESS_DATE.jsonl"
-          fi
+          python scripts/stage_incremental_slice.py --process-date "$PROCESS_DATE"
+          git add -- "data/price_slices/$PROCESS_DATE.jsonl"
           git add -- "data/ingestion_runs/${LOAD_TYPE}_${PROCESS_DATE}.json"
           git add -- data/ingestion_cursor.json
           if ! git diff --cached --quiet; then
