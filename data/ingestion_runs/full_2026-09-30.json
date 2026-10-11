@@ -1,0 +1,16 @@
+{
+  "load_type": "full",
+  "process_date": "2026-09-30",
+  "start": "2022-10-01",
+  "end_exclusive": "2026-10-01",
+  "rows": 498238,
+  "tickers_requested": 503,
+  "missing_tickers": [
+    "VYLR"
+  ],
+  "sha256": "d5a4b19f942486b2a8463e0307073f9726c6a3661deb5ae723e5ece6354c313a",
+  "raw_file": "full/full_load.jsonl",
+  "status": "SUCCESS",
+  "extracted_at": "2026-10-11T11:17:02.523352+00:00",
+  "s3_uri": "s3://pos-backups-851725280461-ap-south-1-an/spark-files/full/full_load.jsonl"
+}

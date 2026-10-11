@@ -16,11 +16,9 @@ from __future__ import annotations
 import argparse
 import os
 import tempfile
-from io import StringIO
 from pathlib import Path
 
 import pandas as pd
-import requests
 import yfinance as yf
 from dotenv import load_dotenv
 
@@ -48,14 +46,7 @@ def s3_key(*parts: str) -> str:
 
 
 def get_sp500_tickers() -> list[str]:
-    response = requests.get(
-        TICKER_SOURCE,
-        headers={"User-Agent": "dav-dataset-ingestion/1.0"},
-        timeout=120,
-    )
-    response.raise_for_status()
-    table = pd.read_html(StringIO(response.text))[0]
-    return table["Symbol"].astype(str).str.replace(".", "-", regex=False).tolist()
+    return pd.read_csv(ROOT / "data/company_metadata.csv")["ticker"].tolist()
 
 
 def download_ohlcv(ticker: str, start: str, end: str) -> pd.DataFrame:
@@ -73,7 +64,7 @@ def download_ohlcv(ticker: str, start: str, end: str) -> pd.DataFrame:
     if "date" not in frame.columns and "datetime" in frame.columns:
         frame = frame.rename(columns={"datetime": "date"})
 
-    columns = ["ticker", "date", "open", "high", "low", "close", "volume"]
+    columns = ["ticker", "date", "open", "high", "low", "close", "adj_close", "volume"]
     return frame[columns]
 
 
@@ -103,8 +94,8 @@ def upload_to_s3(local_path: Path, bucket: str, key: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--start", default="2019-01-01")
-    parser.add_argument("--end", default="2024-01-01")
+    parser.add_argument("--start", default="2022-10-01")
+    parser.add_argument("--end", default="2026-10-01")
     parser.add_argument("--sample-size", type=int, default=10, help="Number of tickers in the local sample.")
     parser.add_argument("--upload-s3", action="store_true", help="Upload the generated file to S3.")
     parser.add_argument("--s3-bucket", default=env_value("S3_BUCKET", "BUCKET_NAME"))

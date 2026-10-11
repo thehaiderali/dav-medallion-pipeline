@@ -30,10 +30,10 @@ def test_parse_date_accepts_strings_and_dates():
 
 
 def test_raw_file_resolution_mirrors_phase1_layout():
-    assert resolve_raw_file("s3a://b/raw/sp500", "full", date(2024, 1, 5)) == "s3a://b/raw/sp500/full/full_load.parquet"
+    assert resolve_raw_file("s3a://b/raw/sp500", "full", date(2024, 1, 5)) == "s3a://b/raw/sp500/full/full_load.jsonl"
     assert (
         resolve_raw_file("s3a://b/raw/sp500/", "incremental", date(2024, 1, 5))
-        == "s3a://b/raw/sp500/incremental/2024-01-05/data.parquet"
+        == "s3a://b/raw/sp500/incremental/2024-01-05/data.jsonl"
     )
     assert resolve_raw_file("x", "incremental", date(2024, 1, 5), source_file="custom.parquet") == "custom.parquet"
 

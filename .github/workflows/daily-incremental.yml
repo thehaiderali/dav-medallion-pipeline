@@ -1,0 +1,81 @@
+name: Midnight sequential prices to S3 and Git
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      process_date:
+        description: 'One slice YYYY-MM-DD (blank = committed sequential cursor, initially 2026-10-01)'
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: market-ingestion-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-1' }}
+      S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      FOLDER_PREFIX: ${{ vars.FOLDER_PREFIX || 'raw/sp500' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Resolve parameters
+        id: params
+        env:
+          INPUT_DATE: ${{ inputs.process_date }}
+        run: |
+          python - <<'PY'
+          import os, json
+          from datetime import date
+          from pathlib import Path
+          cursor = json.loads(Path('data/ingestion_cursor.json').read_text())
+          day = os.environ.get('INPUT_DATE') or cursor['next_process_date']
+          date.fromisoformat(day)
+          kind = 'incremental'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write(f'process_date={day}\nload_type={kind}\n')
+          PY
+      - name: Extract and upload to S3
+        env:
+          PROCESS_DATE: ${{ steps.params.outputs.process_date }}
+          LOAD_TYPE: ${{ steps.params.outputs.load_type }}
+        run: python ingestion/market_data.py --load-type "$LOAD_TYPE" --process-date "$PROCESS_DATE" --upload-s3
+      - name: Commit daily slice and ingestion manifest
+        env:
+          PROCESS_DATE: ${{ steps.params.outputs.process_date }}
+          LOAD_TYPE: ${{ steps.params.outputs.load_type }}
+        run: |
+          python scripts/advance_ingestion_cursor.py --process-date "$PROCESS_DATE"
+          if [ "$LOAD_TYPE" = incremental ]; then
+            mkdir -p data/price_slices
+            cp "raw_data/incremental/$PROCESS_DATE/data.jsonl" "data/price_slices/$PROCESS_DATE.jsonl"
+            git add -- "data/price_slices/$PROCESS_DATE.jsonl"
+          fi
+          git add -- "data/ingestion_runs/${LOAD_TYPE}_${PROCESS_DATE}.json"
+          git add -- data/ingestion_cursor.json
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "Record $LOAD_TYPE prices for $PROCESS_DATE"
+            git push origin "HEAD:$GITHUB_REF_NAME"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ingestion-manifests
+          path: data/ingestion_runs/

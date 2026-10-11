@@ -16,12 +16,10 @@ from __future__ import annotations
 import argparse
 import os
 import tempfile
-from datetime import date
-from io import StringIO
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
-import requests
 import yfinance as yf
 from dotenv import load_dotenv
 
@@ -48,18 +46,12 @@ def s3_key(*parts: str) -> str:
 
 
 def get_sp500_tickers() -> list[str]:
-    response = requests.get(
-        TICKER_SOURCE,
-        headers={"User-Agent": "dav-dataset-ingestion/1.0"},
-        timeout=120,
-    )
-    response.raise_for_status()
-    table = pd.read_html(StringIO(response.text))[0]
-    return table["Symbol"].astype(str).str.replace(".", "-", regex=False).tolist()
+    return pd.read_csv(ROOT / "data/company_metadata.csv")["ticker"].tolist()
 
 
-def download_latest_ohlcv(ticker: str) -> pd.DataFrame:
-    raw = yf.download(ticker, period="1d", progress=False, auto_adjust=False)
+def download_latest_ohlcv(ticker: str, process_date: date | None = None) -> pd.DataFrame:
+    selected = process_date or date.today()
+    raw = yf.download(ticker, start=str(selected), end=str(selected + timedelta(days=1)), progress=False, auto_adjust=False)
     if raw.empty:
         return pd.DataFrame()
 
@@ -73,15 +65,15 @@ def download_latest_ohlcv(ticker: str) -> pd.DataFrame:
     if "date" not in frame.columns and "datetime" in frame.columns:
         frame = frame.rename(columns={"datetime": "date"})
 
-    columns = ["ticker", "date", "open", "high", "low", "close", "volume"]
+    columns = ["ticker", "date", "open", "high", "low", "close", "adj_close", "volume"]
     return frame[columns]
 
 
-def build_dataset(tickers: list[str]) -> pd.DataFrame:
+def build_dataset(tickers: list[str], process_date: date | None = None) -> pd.DataFrame:
     frames = []
     for ticker in tickers:
         print(f"Downloading {ticker}")
-        frame = download_latest_ohlcv(ticker)
+        frame = download_latest_ohlcv(ticker, process_date)
         if not frame.empty:
             frames.append(frame)
 
@@ -108,10 +100,12 @@ def main() -> None:
     parser.add_argument("--upload-s3", action="store_true", help="Upload the generated file to S3.")
     parser.add_argument("--s3-bucket", default=env_value("S3_BUCKET", "BUCKET_NAME"))
     parser.add_argument("--partition-date", default=date.today().isoformat())
+    parser.add_argument("--process-date", help="Exact trading slice YYYY-MM-DD; overrides partition-date")
     args = parser.parse_args()
 
     sample_tickers = SAMPLE_TICKERS[: args.sample_size]
-    data = build_dataset(sample_tickers)
+    selected = date.fromisoformat(args.process_date or args.partition_date)
+    data = build_dataset(sample_tickers, selected)
 
     SAMPLE_PATH.parent.mkdir(parents=True, exist_ok=True)
     data.to_parquet(SAMPLE_PATH, index=False)
@@ -122,9 +116,9 @@ def main() -> None:
             raise SystemExit("Set S3_BUCKET or pass --s3-bucket before using --upload-s3.")
         with tempfile.TemporaryDirectory() as tmp:
             full_path = Path(tmp) / "data.parquet"
-            full_data = build_dataset(get_sp500_tickers())
+            full_data = build_dataset(get_sp500_tickers(), selected)
             full_data.to_parquet(full_path, index=False)
-            upload_to_s3(full_path, args.s3_bucket, args.partition_date)
+            upload_to_s3(full_path, args.s3_bucket, str(selected))
 
 
 if __name__ == "__main__":

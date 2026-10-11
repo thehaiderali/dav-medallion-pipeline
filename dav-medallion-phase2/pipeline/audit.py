@@ -18,6 +18,7 @@ from pyspark.sql import SparkSession
 
 from .config import STATUS_FAILURE, STATUS_SKIPPED, STATUS_SUCCESS
 from .schemas import LOG_SCHEMA
+from .storage import write_table
 
 
 def utc_now() -> datetime:
@@ -43,13 +44,13 @@ class AuditLogger:
         self._sink = sink
 
     def write(self, record: dict) -> None:
-        record = {**record, "run_id": self.run_id, "load_timestamp": utc_now()}
+        record = {**record, "run_id": self.run_id, "parameter_processed": record.get("parameter"), "load_timestamp": utc_now()}
         if self._sink is not None:
             self._sink(record)
             return
         row = tuple(record.get(field.name) for field in LOG_SCHEMA.fields)
         frame = self.spark.createDataFrame([row], schema=LOG_SCHEMA)
-        frame.write.format("delta").mode("append").save(self.logs_path)
+        write_table(frame, self.logs_path, evolve=True)
 
 
 @dataclass
@@ -109,6 +110,6 @@ class AuditedStep:
                 }
             )
         except Exception as log_error:  # never let logging mask the real outcome
-            print(f"[audit] WARNING: could not write audit record: {log_error}")
+            raise RuntimeError("Execution audit persistence failed") from log_error
         # swallow ordinary errors so the rest of the batch list keeps running
         return bool(exc_type is not None and self.suppress_errors and issubclass(exc_type, Exception))

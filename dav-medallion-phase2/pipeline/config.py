@@ -39,29 +39,42 @@ class LakehousePaths:
     @classmethod
     def from_root(cls, root: str | None = None) -> "LakehousePaths":
         root = root or os.getenv("LAKEHOUSE_ROOT", "lakehouse")
-        if not _has_scheme(root):
+        if not _has_scheme(root) and not root.startswith("uc:"):
             root = os.path.abspath(root)
         return cls(root=root.rstrip("/"))
 
     @property
     def bronze(self) -> str:
-        return join_path(self.root, "bronze", "sp500_prices")
+        return self.target("bronze_prices", "bronze/sp500_prices")
 
     @property
     def silver(self) -> str:
-        return join_path(self.root, "silver", "sp500_prices")
+        return self.target("silver_prices", "silver/sp500_prices")
 
     @property
     def quarantine(self) -> str:
-        return join_path(self.root, "quarantine", "sp500_prices_rejected")
+        return self.target("quarantine_prices", "quarantine/sp500_prices_rejected")
 
     @property
     def logs(self) -> str:
-        return join_path(self.root, "ops", "pipeline_execution_logs")
+        return self.target("pipeline_execution_logs", "ops/pipeline_execution_logs")
 
     @property
     def drift(self) -> str:
-        return join_path(self.root, "ops", "schema_drift_log")
+        return self.target("schema_drift_log", "ops/schema_drift_log")
+
+    def target(self, name: str, path: str) -> str:
+        if self.root.startswith("uc:"):
+            return f"{self.root}.{name}"
+        return join_path(self.root, path)
+
+    @property
+    def metadata(self) -> str:
+        return self.target("bronze_companies", "bronze/sp500_companies")
+
+    @property
+    def silver_metadata(self) -> str:
+        return self.target("silver_companies", "silver/sp500_companies")
 
 
 def parse_date(value: str | date) -> date:
@@ -100,5 +113,5 @@ def resolve_raw_file(
     if source_file:
         return source_file
     if load_type == "full":
-        return join_path(raw_path, "full", "full_load.parquet")
-    return join_path(raw_path, "incremental", batch_date.isoformat(), "data.parquet")
+        return join_path(raw_path, "full", "full_load.jsonl")
+    return join_path(raw_path, "incremental", batch_date.isoformat(), "data.jsonl")

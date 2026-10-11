@@ -1,56 +1,45 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 03 - Demo: idempotency, schema drift and audit trail
-# MAGIC Proves the Phase 2 requirements on a throw-away lakehouse using the sample files shipped in `sample_data/`.
-# MAGIC Run top to bottom. Change `SAMPLE_DIR` if the sample files live elsewhere.
+# MAGIC # Executable Phase 2 proof
+# MAGIC Use a **new** dedicated demo schema and a Volume directory for generated inputs.
+# MAGIC Shows schemas, full and incremental loads, exact rerun equality, updates, historical
+# MAGIC backfill, new-column evolution, bad-record quarantine, stale protection and audit logs.
+# MAGIC No existing production tables or files are deleted.
 
 # COMMAND ----------
-
-import os
+import json
 import sys
+from pathlib import Path
 
-repo_root = os.path.abspath(os.path.join(os.getcwd(), ".."))
-if repo_root not in sys.path:
-    sys.path.insert(0, repo_root)
+for parent in [Path.cwd(), *Path.cwd().parents]:
+    package_root = parent if (parent / "pipeline").is_dir() else parent / "dav-medallion-phase2"
+    if (package_root / "pipeline").is_dir():
+        sys.path.insert(0, str(package_root))
+        break
 
-SAMPLE_DIR = f"file:{repo_root}/sample_data"  # or dbfs:/FileStore/sample_data after uploading
-DEMO_ROOT = "dbfs:/FileStore/demo_lakehouse"
-dbutils.fs.rm(DEMO_ROOT, True)
-
-# COMMAND ----------
-
-from pipeline.run_pipeline import run_pipeline
-
-common = dict(lakehouse_root=DEMO_ROOT, raw_path=SAMPLE_DIR)
-
-# Sample files are single files, so point at them directly with `source_file`.
-def load_all(label):
-    print(f"--- {label}")
-    steps = run_pipeline(spark, layer="all", load_type="full", run_date="2024-01-01",
-                         source_file=f"{SAMPLE_DIR}/full_load_sample.parquet", **common)
-    steps += run_pipeline(spark, layer="all", load_type="incremental", run_date="2024-01-02",
-                          source_file=f"{SAMPLE_DIR}/incremental_load_sample.parquet", **common)
-    for s in steps:
-        print(f"{s.layer:17} {s.status:8} {s.batch_id:22} inserted={s.rows_inserted} updated={s.rows_updated} quarantined={s.rows_quarantined}")
-
-load_all("first run  -> rows inserted")
-load_all("second run -> IDENTICAL input: expect inserted=0 updated=0")
+catalog = spark.sql("SELECT current_catalog()").first()[0]
+dbutils.widgets.text("demo_input_root", "", "Demo input directory /Volumes/...")
+dbutils.widgets.text("demo_lakehouse_root", f"uc:{catalog}.dav_phase2_demo", "Fresh demo schema")
 
 # COMMAND ----------
+from pipeline.demo import demo
+from pipeline.config import LakehousePaths
+from pipeline.storage import read_table
 
-silver = spark.read.format("delta").load(f"{DEMO_ROOT}/silver/sp500_prices")
-dupes = silver.groupBy("ticker", "trade_date").count().where("count > 1").count()
-print("Silver rows:", silver.count(), "| duplicate (ticker, trade_date) keys:", dupes)
+input_root = dbutils.widgets.get("demo_input_root").strip()
+if not input_root.startswith("/Volumes/"):
+    raise ValueError("Set demo_input_root to a writable Unity Catalog Volume directory")
+root = dbutils.widgets.get("demo_lakehouse_root").strip()
+evidence = demo(spark, input_root, root)
+evidence["execution_environment"] = "Databricks"
+Path(input_root, "phase2_evidence.json").write_text(json.dumps(evidence, default=str, indent=2), encoding="utf-8")
+print("Proof passed; saved phase2_evidence.json in the demo input directory")
 
 # COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### Audit trail
-
-# COMMAND ----------
-
-display(
-    spark.read.format("delta").load(f"{DEMO_ROOT}/ops/pipeline_execution_logs")
-    .select("pipeline_layer", "batch_id", "parameter", "start_time", "end_time", "status", "rows_inserted", "rows_updated", "rows_quarantined")
-    .orderBy("start_time")
-)
+paths = LakehousePaths.from_root(root)
+read_table(spark, paths.bronze).printSchema()
+read_table(spark, paths.silver).printSchema()
+display(read_table(spark, paths.silver))
+display(read_table(spark, paths.quarantine))
+display(read_table(spark, paths.drift))
+display(read_table(spark, paths.logs).orderBy("start_time"))
