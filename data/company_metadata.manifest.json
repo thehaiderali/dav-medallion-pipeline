@@ -1,0 +1,11 @@
+{
+  "source_url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+  "captured_at": "2026-10-11T11:03:25.200595+00:00",
+  "rows": 503,
+  "columns": [
+    "ticker",
+    "company_name",
+    "sector",
+    "sub_industry"
+  ]
+}

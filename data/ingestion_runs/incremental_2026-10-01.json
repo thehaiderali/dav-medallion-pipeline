@@ -1,0 +1,14 @@
+{
+  "load_type": "incremental",
+  "process_date": "2026-10-01",
+  "start": "2026-10-01",
+  "end_exclusive": "2026-10-02",
+  "rows": 503,
+  "tickers_requested": 503,
+  "missing_tickers": [],
+  "sha256": "9f93da95d17715f26093dfd42337a017ce055654eae9f80e0e29a1a3d7ee7cb5",
+  "raw_file": "incremental/2026-10-01/data.jsonl",
+  "status": "SUCCESS",
+  "extracted_at": "2026-10-11T11:26:27.242193+00:00",
+  "s3_uri": "s3://pos-backups-851725280461-ap-south-1-an/spark-files/incremental/2026-10-01/data.jsonl"
+}

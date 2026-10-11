@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+.pytest_cache/
 *.py[cod]
 *.egg-info/
 .venv/
@@ -32,3 +33,9 @@ Thumbs.db
 
 # Notebook checkpoints
 .ipynb_checkpoints/
+
+# Private deployment tutorial and local extracts (manifests are committed)
+docs/DATABRICKS_RUN_TUTORIAL.local.md
+raw_data/
+artifacts/
+lakehouse/
