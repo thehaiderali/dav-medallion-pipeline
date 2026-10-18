@@ -1,4 +1,4 @@
 {
   "next_process_date": "2026-10-01",
-  "description": "Sequential one-day extraction cursor. Advance after successful S3 publication and Git commit. Databricks is run manually."
+  "description": "Sequential one-day extraction cursor. Advance after successful Git publication. Databricks is run manually."
 }

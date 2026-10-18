@@ -1,4 +1,4 @@
-name: Midnight sequential prices to S3 and Git
+name: Midnight sequential prices to Git
 
 on:
   schedule:
@@ -20,13 +20,6 @@ jobs:
   ingest:
     runs-on: ubuntu-latest
     timeout-minutes: 180
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-1' }}
-      S3_BUCKET: ${{ secrets.S3_BUCKET }}
-      FOLDER_PREFIX: ${{ vars.FOLDER_PREFIX || 'raw/sp500' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,11 +45,11 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
               out.write(f'process_date={day}\nload_type={kind}\n')
           PY
-      - name: Extract and upload to S3
+      - name: Extract daily slice
         env:
           PROCESS_DATE: ${{ steps.params.outputs.process_date }}
           LOAD_TYPE: ${{ steps.params.outputs.load_type }}
-        run: python ingestion/market_data.py --load-type "$LOAD_TYPE" --process-date "$PROCESS_DATE" --upload-s3
+        run: python ingestion/market_data.py --load-type "$LOAD_TYPE" --process-date "$PROCESS_DATE"
       - name: Commit daily slice and ingestion manifest
         env:
           PROCESS_DATE: ${{ steps.params.outputs.process_date }}
