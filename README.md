@@ -3,7 +3,7 @@
 Two free sources: **yfinance OHLCV prices** and a **one-time Wikipedia company directory snapshot**. Processing stops at Silver for this assignment.
 
 ```text
-yfinance -> date-exact raw files -> S3 + Git daily slices -> Bronze prices (APPEND)
+yfinance -> date-exact raw files -> Git daily slices -> Bronze prices (APPEND)
 Wikipedia -> committed company_metadata.csv ------------> Bronze companies (OVERWRITE once)
                                                              |
                                      casts + validation + quarantine
@@ -20,7 +20,7 @@ Wikipedia -> committed company_metadata.csv ------------> Bronze companies (OVER
 - `ingestion/company_metadata.py`: one-time Wikipedia scrape; daily extraction never scrapes Wikipedia.
 - `data/company_metadata.csv`, `.manifest.json`: committed 503-company snapshot with sectors/sub-industries and provenance.
 - `data/price_slices/`: versioned one-day raw inputs.
-- `data/ingestion_runs/`: extraction dates, counts, missing tickers, hashes and S3 locations.
+- `data/ingestion_runs/`: extraction dates, counts, missing tickers, hashes and optional S3 locations.
 - `data/ingestion_cursor.json`: next sequential date, initially **2026-10-01**.
 - `dav-medallion-phase2/pipeline/`: explicit contracts, readers, Delta storage, pipeline and auditing.
 - `dav-medallion-phase2/notebooks/`: manual Bronze/Silver notebooks and executable grading demonstration.
@@ -36,11 +36,11 @@ Incremental extraction starts at **2026-10-01**, and fetches exactly `[process_d
 ```bash
 pip install -r requirements.txt
 python ingestion/market_data.py --load-type full --process-date 2026-09-30 --upload-s3
-python ingestion/market_data.py --load-type incremental --process-date 2026-10-01 --upload-s3
+python ingestion/market_data.py --load-type incremental --process-date 2026-10-01
 python scripts/stage_incremental_slice.py --process-date 2026-10-01
 ```
 
-Use `.env` locally (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, optional `AWS_SESSION_TOKEN`, `S3_BUCKET`, `AWS_REGION`/`S3_REGION`, `FOLDER_PREFIX`). Omit `--upload-s3` for local-only files. Default full output: `raw_data/full/full_load.jsonl`; incremental: `raw_data/incremental/YYYY-MM-DD/data.jsonl`. Large extracts and caches are gitignored; daily slices/manifests are versioned.
+For optional local S3 uploads, use `.env` (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, optional `AWS_SESSION_TOKEN`, `S3_BUCKET`, `AWS_REGION`/`S3_REGION`, `FOLDER_PREFIX`) and `--upload-s3`. Default full output: `raw_data/full/full_load.jsonl`; incremental: `raw_data/incremental/YYYY-MM-DD/data.jsonl`. Large extracts and caches are gitignored; daily slices/manifests are versioned.
 
 ## Schemas and table storage
 
@@ -173,13 +173,9 @@ Bad records do not crash the valid part of a batch. Failed file operations are l
 
 Schedule: **00:00 UTC daily**, not guaranteed to start at exactly that second (GitHub scheduling can be delayed). It uses `data/ingestion_cursor.json`, **not today's date**: October 1 first, October 2 next, then subsequent calendar slices. NYSE non-trading days produce committed `SKIPPED` manifests and empty slices. A publication failure leaves the cursor unchanged. Manual workflow input can replay one date without advancing a different cursor date.
 
-Repository Settings -> Secrets and variables -> Actions:
+Allow Actions write access to repository contents. Protected branches may require bot permission or a dedicated ingestion branch. No AWS secrets or variables are needed for the workflow.
 
-- Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET`; optional `AWS_SESSION_TOKEN`.
-- Variables: `AWS_REGION` (default ap-south-1), `FOLDER_PREFIX` (set to your actual S3 prefix; default raw/sp500).
-- Allow Actions write access to repository contents. Protected branches may require bot permission or a dedicated ingestion branch.
-
-The workflow uploads one slice to S3 and commits `data/price_slices/<date>.jsonl`, its manifest, and the next cursor. Databricks is intentionally run manually. Scheduled workflows run from the default branch: merge this PR to activate scheduling, or use workflow_dispatch on phase-2 for testing. The locally tested October 1 input does not advance the committed cursor: the first scheduled run can reproduce October 1.
+The workflow commits `data/price_slices/<date>.jsonl`, its manifest, and the next cursor directly to the repository. Databricks is intentionally run manually. Scheduled workflows run from the default branch: merge this PR to activate scheduling, or use workflow_dispatch on phase-2 for testing. The locally tested October 1 input does not advance the committed cursor: the first scheduled run can reproduce October 1.
 
 ## Execution proof
 
