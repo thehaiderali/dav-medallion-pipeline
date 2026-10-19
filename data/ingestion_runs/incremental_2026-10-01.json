@@ -6,9 +6,8 @@
   "rows": 503,
   "tickers_requested": 503,
   "missing_tickers": [],
-  "sha256": "9f93da95d17715f26093dfd42337a017ce055654eae9f80e0e29a1a3d7ee7cb5",
+  "sha256": "1c472a8e1c3f4282b10f214ebfcf23dff34815c8e92d5ab64601cf76be81596a",
   "raw_file": "incremental/2026-10-01/data.jsonl",
   "status": "SUCCESS",
-  "extracted_at": "2026-10-11T11:26:27.242193+00:00",
-  "s3_uri": "s3://pos-backups-851725280461-ap-south-1-an/spark-files/incremental/2026-10-01/data.jsonl"
+  "extracted_at": "2026-10-19T03:25:38.578120+00:00"
 }
