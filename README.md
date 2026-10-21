@@ -193,5 +193,3 @@ SELECT pipeline_layer, parameter_processed, start_time, end_time, status, rows_i
 SELECT * FROM phase2_quarantine;
 SELECT * FROM schema_drift_log;
 ```
-
-backfill; 3:15–4:15 schema drift/quarantine; 4:15–5:00 audit logs. Capture actual results. A detailed private tutorial is created locally at `docs/DATABRICKS_RUN_TUTORIAL.local.md` and gitignored.
