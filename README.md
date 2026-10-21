@@ -194,4 +194,4 @@ SELECT * FROM phase2_quarantine;
 SELECT * FROM schema_drift_log;
 ```
 
-Five-minute recording: 0:00–0:40 repository/explicit schemas; 0:40–1:30 first load and lineage; 1:30–2:30 identical rerun with zero Silver inserts/updates and unchanged rows; 2:30–3:15 backfill; 3:15–4:15 schema drift/quarantine; 4:15–5:00 audit logs. Capture actual results. A detailed private tutorial is created locally at `docs/DATABRICKS_RUN_TUTORIAL.local.md` and gitignored.
+backfill; 3:15–4:15 schema drift/quarantine; 4:15–5:00 audit logs. Capture actual results. A detailed private tutorial is created locally at `docs/DATABRICKS_RUN_TUTORIAL.local.md` and gitignored.
