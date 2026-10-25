@@ -8,6 +8,7 @@ LOG_SCHEMA = StructType([
         ("start_time", TimestampType()), ("end_time", TimestampType()), ("duration_seconds", DoubleType()),
         ("status", StringType()), ("rows_read", LongType()), ("rows_inserted", LongType()),
         ("rows_updated", LongType()), ("rows_quarantined", LongType()),
+        ("rows_aggregated", LongType()),
         ("error_message", StringType()), ("load_timestamp", TimestampType()),
     ]
 ])

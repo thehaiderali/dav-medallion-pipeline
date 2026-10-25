@@ -31,13 +31,16 @@ def execute(dbutils, spark, layer):
         refresh_metadata=get("refresh_metadata") == "true",
     )
     for step in steps:
-        print(f"{step.layer}: {step.status}; batch={step.batch_id}; read={step.rows_read}; inserted={step.rows_inserted}; updated={step.rows_updated}; quarantined={step.rows_quarantined}; {step.error_message or ''}")
+        print(f"{step.layer}: {step.status}; batch={step.batch_id}; read={step.rows_read}; inserted={step.rows_inserted}; updated={step.rows_updated}; aggregated={step.rows_aggregated}; quarantined={step.rows_quarantined}; {step.error_message or ''}")
     paths = LakehousePaths.from_root(get("lakehouse_root"))
     for view, target in {
         "phase2_bronze_prices": paths.bronze, "phase2_bronze_companies": paths.metadata,
         "phase2_silver_prices": paths.silver, "phase2_silver_companies": paths.silver_metadata,
         "phase2_quarantine": paths.quarantine, "pipeline_execution_logs": paths.logs,
         "schema_drift_log": paths.drift,
+        "gold_dim_date": paths.gold_date, "gold_dim_company": paths.gold_company,
+        "gold_dim_sector": paths.gold_sector, "gold_fact_daily_price": paths.gold_price,
+        "gold_fact_sector_daily": paths.gold_sector_daily,
     }.items():
         read_table(spark, target).createOrReplaceTempView(view)
     if any(s.failed for s in steps):

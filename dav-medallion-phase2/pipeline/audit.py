@@ -68,6 +68,7 @@ class AuditedStep:
     rows_inserted: int = 0
     rows_updated: int = 0
     rows_quarantined: int = 0
+    rows_aggregated: int = 0
     status: str = STATUS_SUCCESS
     error_message: str | None = None
     start_time: datetime | None = field(default=None, init=False)
@@ -106,6 +107,7 @@ class AuditedStep:
                     "rows_inserted": int(self.rows_inserted),
                     "rows_updated": int(self.rows_updated),
                     "rows_quarantined": int(self.rows_quarantined),
+                    "rows_aggregated": int(self.rows_aggregated),
                     "error_message": self.error_message,
                 }
             )
