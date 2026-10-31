@@ -44,6 +44,10 @@ def demo(spark, input_root, lakehouse_root):
     after = [r.asDict() for r in read_table(spark, paths.silver).orderBy("ticker", "trade_date").collect()]
     assert before == after, "Silver rows (including timestamps and lineage) changed on replay"
     assert all(s.rows_inserted == s.rows_updated == 0 for s in rerun if s.layer.startswith("BRONZE_TO_SILVER"))
+    assert all(s.rows_inserted == s.rows_updated == 0 for s in rerun if s.layer in {
+        "SILVER_TO_GOLD_DATE_DIM", "SILVER_TO_GOLD_COMPANY_DIM",
+        "SILVER_TO_GOLD_SECTOR_DIM", "SILVER_TO_GOLD_PRICE_FACT",
+    })
     incremental = write("incremental.jsonl", [price(day="2026-10-01", close="105")])
     run("one-day incremental", layer="all", process_date="2026-10-01", source_file=incremental)
     incremental = write("incremental.jsonl", [price(day="2026-10-01", close="106")])
@@ -67,8 +71,16 @@ def demo(spark, input_root, lakehouse_root):
     silver = read_table(spark, paths.silver)
     duplicates = silver.groupBy("ticker", "trade_date").count().where("count > 1").count()
     assert duplicates == 0
+    gold_prices = read_table(spark, paths.gold_price)
+    assert gold_prices.count() == silver.count()
+    assert gold_prices.groupBy("date_key", "ticker").count().where("count > 1").count() == 0
+    assert read_table(spark, paths.gold_date).count() == silver.select("trade_date").distinct().count()
+    assert read_table(spark, paths.gold_company).count() == read_table(spark, paths.silver_metadata).count()
+    sector_daily = read_table(spark, paths.gold_sector_daily)
+    assert sector_daily.agg({"company_observations": "sum"}).first()[0] == gold_prices.count()
+    assert sector_daily.agg({"total_volume": "sum"}).first()[0] == gold_prices.agg({"volume": "sum"}).first()[0]
     for target in [paths.bronze, paths.metadata, paths.silver, paths.silver_metadata]:
         assert read_table(spark, target).where("load_timestamp IS NULL OR source_file IS NULL OR batch_id IS NULL").count() == 0
     logs = [r.asDict() for r in read_table(spark, paths.logs).orderBy("start_time").collect()]
     assert all(r["parameter_processed"] and r["start_time"] <= r["end_time"] for r in logs)
-    return {"execution_environment": "Databricks Free Edition serverless / Delta Lake", "silver_unchanged_on_identical_rerun": before == after, "duplicate_silver_keys": duplicates, "silver_rows": silver.count(), "bronze_schema": read_table(spark, paths.bronze).schema.jsonValue(), "silver_schema": silver.schema.jsonValue(), "history": history, "quarantine": rejects, "execution_logs": logs}
+    return {"execution_environment": "Databricks Free Edition serverless / Delta Lake", "silver_unchanged_on_identical_rerun": before == after, "duplicate_silver_keys": duplicates, "silver_rows": silver.count(), "gold_price_rows": gold_prices.count(), "gold_sector_daily_rows": sector_daily.count(), "bronze_schema": read_table(spark, paths.bronze).schema.jsonValue(), "silver_schema": silver.schema.jsonValue(), "history": history, "quarantine": rejects, "execution_logs": logs}

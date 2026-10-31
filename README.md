@@ -1,6 +1,6 @@
-# S&P 500 Lakehouse — Phase 2: Bronze and Silver
+# S&P 500 Lakehouse — Bronze, Silver and Gold
 
-Two free sources: **yfinance OHLCV prices** and a **one-time Wikipedia company directory snapshot**. Processing stops at Silver for this assignment.
+Two free sources: **yfinance OHLCV prices** and a **one-time Wikipedia company directory snapshot**. The pipeline now publishes a dimensional Gold model from Silver.
 
 ```text
 yfinance -> date-exact raw files -> Git daily slices -> Bronze prices (APPEND)
@@ -11,6 +11,8 @@ Wikipedia -> committed company_metadata.csv ------------> Bronze companies (OVER
                                     company INNER JOIN on ticker
                                                              |
                                  Silver prices/companies (MERGE INTO)
+                                             |
+                               Gold dimensions and facts (MERGE/overwrite)
                                       every operation -> audit logs
 ```
 
@@ -24,6 +26,10 @@ Wikipedia -> committed company_metadata.csv ------------> Bronze companies (OVER
 - `data/ingestion_cursor.json`: next sequential date, initially **2026-10-01**.
 - `dav-medallion-phase2/pipeline/`: explicit contracts, readers, Delta storage, pipeline and auditing.
 - `dav-medallion-phase2/notebooks/`: manual Bronze/Silver notebooks and executable grading demonstration.
+- `dav-medallion-phase2/notebooks/00_end_to_end.py`: one invocation from raw files through Gold.
+- `dav-medallion-phase2/notebooks/04_silver_to_gold.py`: full Gold synchronization from existing Silver.
+- `docs/gold-model-and-power-bi.md`: Gold data dictionary, relationships, Power BI import steps, 13 suggested measures and six visuals.
+- `output/pdf/phase3_architecture_finops_report.pdf`: final architecture and FinOps report.
 - `.github/workflows/daily-incremental.yml`: midnight one-day extraction and publication.
 - `dav-medallion-phase2/notebooks/03_demo_idempotency_and_audit.py`: executable serverless grading proof, with JSON output saved to a Volume.
 
@@ -134,18 +140,24 @@ Grain: one enriched company/trading-day observation. Composite primary key: **(`
 | start_time, end_time, load_timestamp | TIMESTAMP |
 | duration_seconds | DOUBLE |
 | status, error_message | STRING |
-| rows_read, rows_inserted, rows_updated, rows_quarantined | BIGINT |
+| rows_read, rows_inserted, rows_updated, rows_quarantined, rows_aggregated | BIGINT |
 
 Statuses are `SUCCESS`, `FAILURE`, `SKIPPED`. Each file/table operation is audited, including full and incremental loads, plus a `PIPELINE` invocation row. Invocation metrics aggregate operations; use individual layer rows for table-specific counts. Audit persistence failure raises an error instead of reporting silent success.
 
 `schema_drift_log`: `run_id`, `batch_id`, `source_file`, `drift_type`, `column_name`, `expected_type`, `actual_type`, `action_taken` (STRING) and `load_timestamp TIMESTAMP`. Added columns are evolved into Bronze and retained in the original payload; uncastable values are quarantined at Silver.
 
+### Gold: business-ready dimensional model
+
+Gold contains `gold_dim_date`, `gold_dim_company`, `gold_dim_sector`, `gold_fact_daily_price` (one ticker/trading date) and `gold_fact_sector_daily` (one sector/trading date). Keys, relationships, measure meanings, refresh strategy, Power BI import instructions, 13 DAX measures and six recommended visuals are in [the Gold model guide](docs/gold-model-and-power-bi.md). The [architecture and FinOps PDF](output/pdf/phase3_architecture_finops_report.pdf) records the engineering decisions, cost assumptions, and outstanding workspace-only evidence.
+
+Gold is refreshed automatically after each successful Silver batch. `rows_aggregated` is populated for the sector aggregate operation. A separate Gold-only notebook can rebuild the complete Gold snapshot from Silver. The PDF does not present a Spark UI screenshot or billed costs because no Databricks execution or billing export was available for this delivery.
+
 ## Manual Databricks run guide
 
-1. Pull `phase-2` in the connected Git Folder (or `main` after merge).
+1. Pull this branch in the connected Git Folder (or `main` after merge).
 2. Create a managed Volume through Catalog, and upload `data/company_metadata.csv` plus the desired price file. Full data is also available locally at `raw_data/full/full_load.jsonl` or at the S3 URI in its committed manifest.
-3. Open `dav-medallion-phase2/notebooks/01_raw_to_bronze.py`; run the widget-definition cell, fill widgets, then run the remaining cells.
-4. Open `02_bronze_to_silver.py`, use the same process date/load type/table root, and run it.
+3. Open `dav-medallion-phase2/notebooks/00_end_to_end.py`; run the widget-definition cell, fill widgets, then run the remaining cells. This executes Bronze, Silver and Gold in one invocation.
+4. Alternatively, use `01_raw_to_bronze.py` followed by `02_bronze_to_silver.py`; the latter now refreshes Gold automatically.
 5. Inspect displayed tables, quarantine and execution logs. No Databricks API token is required for manual execution.
 
 | Widget | Full load | One-day incremental | Historical backfill |
