@@ -1,0 +1,13 @@
+{
+  "load_type": "incremental",
+  "process_date": "2026-10-16",
+  "start": "2026-10-16",
+  "end_exclusive": "2026-10-17",
+  "rows": 503,
+  "tickers_requested": 503,
+  "missing_tickers": [],
+  "sha256": "4c768ea04defb257458b923ec291b1e82f4ebb117562d9a9e4d91591bd4aac6d",
+  "raw_file": "incremental/2026-10-16/data.jsonl",
+  "status": "SUCCESS",
+  "extracted_at": "2026-11-03T05:30:01.887166+00:00"
+}

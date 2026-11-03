@@ -1,5 +1,5 @@
 {
-  "next_process_date": "2026-10-16",
+  "next_process_date": "2026-10-17",
   "description": "Sequential one-day extraction cursor. Advance after successful Git publication. Databricks is run manually.",
-  "last_completed_date": "2026-10-15"
+  "last_completed_date": "2026-10-16"
 }
