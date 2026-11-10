@@ -1,0 +1,62 @@
+{
+  "_source": "Measured in Databricks Free Edition workspace (AWS us-east-2) on 2026-11-10/11. Durations come from workspace.dav_phase2.pipeline_execution_logs and the Jobs API; query metrics from the SQL Query History API; prices from system.billing.list_prices.",
+  "workspace": {
+    "edition": "Databricks Free Edition",
+    "cloud_region": "AWS us-east-2 (Ohio)",
+    "compute": "Serverless jobs (notebook task) and Serverless Starter SQL warehouse (2X-Small, auto-stop 10 min)",
+    "repo_commit": "5d3c276"
+  },
+  "runs": {
+    "full_load": {
+      "job_run_id": 543070624148885,
+      "process_date": "2026-09-30",
+      "result": "SUCCESS",
+      "job_wall_seconds": 170,
+      "pipeline_seconds": 118.4,
+      "rows": {"bronze": 498238, "silver": 498238, "gold_fact_daily_price": 498238, "gold_fact_sector_daily": 11022, "gold_dim_date": 1002, "gold_dim_company": 503, "gold_dim_sector": 11, "quarantined": 0},
+      "step_seconds": {"RAW_TO_BRONZE_METADATA": 14.7, "RAW_TO_BRONZE": 10, "BRONZE_TO_SILVER_METADATA": 9.0, "BRONZE_TO_SILVER": 14, "SILVER_TO_GOLD_SECTOR_DIM": 6, "SILVER_TO_GOLD_COMPANY_DIM": 6, "SILVER_TO_GOLD_DATE_DIM": 5, "SILVER_TO_GOLD_PRICE_FACT": 6, "SILVER_TO_GOLD_SECTOR_FACT": 5}
+    },
+    "incremental_backfill": {
+      "job_run_id": 904703370941968,
+      "window": "2026-10-01 to 2026-10-23",
+      "trading_day_batches": 17,
+      "weekend_dates_without_file": 6,
+      "result": "FAILED (attempt 0): six weekend dates logged FAILURE because skip_missing is ineffective on serverless; automatic retry (attempt 1) cancelled",
+      "job_wall_seconds": 831,
+      "pipeline_seconds": 808.1,
+      "avg_step_seconds_per_trading_day": 33.2,
+      "avg_step_seconds": {"BRONZE_TO_SILVER": 7.2, "SILVER_TO_GOLD_SECTOR_DIM": 5.1, "SILVER_TO_GOLD_COMPANY_DIM": 4.9, "SILVER_TO_GOLD_DATE_DIM": 4.7, "SILVER_TO_GOLD_PRICE_FACT": 4.6, "SILVER_TO_GOLD_SECTOR_FACT": 3.6, "RAW_TO_BRONZE": 3.1},
+      "rows_per_trading_day": "503 (2026-10-01 to 2026-10-16), 502 (2026-10-19 onward; KVUE has no prices after 2026-10-16)"
+    },
+    "final_state": {
+      "silver_prices": 506784,
+      "gold_fact_daily_price": 506784,
+      "duplicate_ticker_date_keys": 0,
+      "gold_fact_sector_daily": 11209,
+      "gold_dim_date": 1019,
+      "trade_date_range": "2022-10-03 to 2026-10-23",
+      "bronze_prices": 515330,
+      "bronze_note": "8,546 Bronze rows were re-appended by the cancelled retry; Silver MERGE deduplicated them",
+      "schema_drift_log_rows": 0,
+      "quarantine_rows": 0
+    }
+  },
+  "table_layout": {
+    "bronze_prices": {"files": 5, "mb": 56.6, "partition_columns": []},
+    "silver_prices": {"files": 1, "mb": 26.3, "partition_columns": []},
+    "gold_fact_daily_price": {"files": 25, "mb": 32.6, "partition_columns": []},
+    "gold_fact_sector_daily": {"files": 1, "mb": 0.2, "partition_columns": []}
+  },
+  "sector_fact_query": {
+    "warehouse": "Serverless Starter Warehouse, 2X-Small",
+    "plan": "AdaptiveSparkPlan; PhotonScan(gold_dim_company) -> ShuffleExchange SinglePartition EXECUTOR_BROADCAST -> PhotonBroadcastHashJoin(ticker) with PhotonScan(gold_fact_daily_price, OptionalDataFilters hashedrelationcontains(ticker)) -> PhotonProject -> PhotonGroupingAgg(partial) -> ShuffleExchange hashpartitioning(date_key, sector_key, 16) -> PhotonGroupingAgg(final merge); fully supported by Photon",
+    "full_rebuild": {"statement_id": "01f1dd3f-7bb3-11e3-af9d-9acf06fc9e44", "total_ms": 1804, "execution_ms": 1445, "compilation_ms": 307, "rows_read": 507287, "rows_produced": 11209, "read_bytes": 9056315, "files_read": 26, "files_pruned": 0, "tasks": 10, "task_total_ms": 3321, "spill_bytes": 0},
+    "one_day_filter": {"statement_id": "01f1dd3f-7e31-1ae7-b71e-c8bf94887da7", "predicate": "date_key = 20261023", "total_ms": 877, "rows_read": 1004, "rows_produced": 11, "read_bytes": 62821, "files_read": 2, "files_pruned": 24, "pruned_bytes": 32556187, "tasks": 3, "task_total_ms": 45}
+  },
+  "billing": {
+    "system_billing_usage_last_ingested_date": "2026-10-15",
+    "note": "The 2026-11-10 job runs were not yet in system.billing.usage when this report was built. Free Edition does not charge; values below are list-price equivalents.",
+    "recorded_usage_2026_09_08_to_2026_10_15": {"PREMIUM_ALL_PURPOSE_SERVERLESS_COMPUTE_US_EAST_OHIO_dbu": 1.70, "GENIE_FREE_USAGE_dbu": 45.32, "PREMIUM_DATABRICKS_STORAGE_US_EAST_OHIO_dsu": 0.31},
+    "list_prices_usd": {"PREMIUM_JOBS_SERVERLESS_COMPUTE_US_EAST_OHIO_per_dbu": 0.35, "PREMIUM_ALL_PURPOSE_SERVERLESS_COMPUTE_US_EAST_OHIO_per_dbu": 0.75, "PREMIUM_SERVERLESS_SQL_COMPUTE_US_EAST_OHIO_per_dbu": 0.70}
+  }
+}
