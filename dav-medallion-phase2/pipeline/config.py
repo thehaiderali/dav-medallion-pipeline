@@ -15,6 +15,7 @@ LOAD_TYPES = ("full", "incremental")
 
 LAYER_RAW_TO_BRONZE = "RAW_TO_BRONZE"
 LAYER_BRONZE_TO_SILVER = "BRONZE_TO_SILVER"
+LAYER_SILVER_TO_GOLD = "SILVER_TO_GOLD"
 
 STATUS_SUCCESS = "SUCCESS"
 STATUS_FAILURE = "FAILURE"
@@ -69,6 +70,26 @@ class LakehousePaths:
     @property
     def silver_metadata(self) -> str:
         return self.target("silver_companies")
+
+    @property
+    def gold_date(self) -> str:
+        return self.target("gold_dim_date")
+
+    @property
+    def gold_company(self) -> str:
+        return self.target("gold_dim_company")
+
+    @property
+    def gold_sector(self) -> str:
+        return self.target("gold_dim_sector")
+
+    @property
+    def gold_price(self) -> str:
+        return self.target("gold_fact_daily_price")
+
+    @property
+    def gold_sector_daily(self) -> str:
+        return self.target("gold_fact_sector_daily")
 
 
 def parse_date(value: str | date) -> date:

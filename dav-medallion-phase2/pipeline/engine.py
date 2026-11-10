@@ -19,6 +19,7 @@ from .contracts import (
 from .schemas import DRIFT_SCHEMA, LOG_SCHEMA
 from .storage import ensure_table, merge_into, read_table, write_table
 from .readers import read_price_payloads
+from .gold import refresh_gold
 
 WIKIPEDIA_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 
@@ -184,7 +185,7 @@ def run_pipeline(spark, *, layer="all", lakehouse_root=None, raw_path=None, meta
     # date/window selections can still produce a persisted FAILURE record.
     ensure_table(spark, paths.logs, LOG_SCHEMA)
     with AuditedStep(logger, "PIPELINE", load_type, batch_id, parameters, suppress_errors=False) as invocation:
-        if layer not in ("all", "raw_to_bronze", "bronze_to_silver"):
+        if layer not in ("all", "raw_to_bronze", "bronze_to_silver", "silver_to_gold"):
             raise ValueError("Unsupported layer")
         if load_type not in ("full", "incremental"):
             raise ValueError("load_type must be full or incremental")
@@ -211,7 +212,10 @@ def run_pipeline(spark, *, layer="all", lakehouse_root=None, raw_path=None, meta
             for day in dates:
                 steps.append(raw_to_bronze(spark, paths, logger, raw_path=raw_path or "", load_type=load_type, batch_date=day, source_file=source_file, skip_missing=skip_missing, lineage_mode=lineage_mode, file_format=file_format))
         if layer in ("all", "bronze_to_silver"):
-            steps.append(promote_metadata(spark, paths, logger))
+            metadata_step = promote_metadata(spark, paths, logger)
+            steps.append(metadata_step)
+            if metadata_step.failed:
+                raise RuntimeError("Silver metadata promotion failed; Gold refresh stopped")
             bronze = read_table(spark, paths.bronze)
             if batch_id:
                 bronze = bronze.where(F.col("batch_id") == batch_id)
@@ -222,12 +226,20 @@ def run_pipeline(spark, *, layer="all", lakehouse_root=None, raw_path=None, meta
                 with AuditedStep(logger, "BRONZE_TO_SILVER", load_type, batch_id, parameters) as empty:
                     empty.skip("No Bronze batches matched this parameter")
                 steps.append(empty)
+                if metadata_step.rows_inserted or metadata_step.rows_updated:
+                    steps.extend(refresh_gold(spark, paths, logger, None, load_type, None))
             for batch in batches:
-                steps.append(bronze_to_silver(spark, paths, logger, batch.batch_id, batch.load_type))
+                silver_step = bronze_to_silver(spark, paths, logger, batch.batch_id, batch.load_type)
+                steps.append(silver_step)
+                if not silver_step.failed:
+                    steps.extend(refresh_gold(spark, paths, logger, batch.batch_id, batch.load_type, batch.batch_date))
+        if layer == "silver_to_gold":
+            steps.extend(refresh_gold(spark, paths, logger, batch_id, load_type, None))
         invocation.rows_read = sum(s.rows_read for s in steps)
         invocation.rows_inserted = sum(s.rows_inserted for s in steps)
         invocation.rows_updated = sum(s.rows_updated for s in steps)
         invocation.rows_quarantined = sum(s.rows_quarantined for s in steps)
+        invocation.rows_aggregated = sum(s.rows_aggregated for s in steps)
         if any(s.failed for s in steps):
             invocation.status = "FAILURE"
             invocation.error_message = "; ".join(s.error_message or "" for s in steps if s.failed)[:2000]
