@@ -1,0 +1,15 @@
+{
+  "load_type": "incremental",
+  "process_date": "2026-11-03",
+  "start": "2026-11-03",
+  "end_exclusive": "2026-11-04",
+  "rows": 502,
+  "tickers_requested": 503,
+  "missing_tickers": [
+    "KVUE"
+  ],
+  "sha256": "942c68723571a8c90cca13482960355eb2137406eac34439ba5a145e6ba4a98c",
+  "raw_file": "incremental/2026-11-03/data.jsonl",
+  "status": "SUCCESS",
+  "extracted_at": "2026-11-21T05:47:04.481151+00:00"
+}
